@@ -21,7 +21,7 @@ CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
 PRODUCTIVITY_PROMPT = """Is the user productive? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
 
 Important:
-- If the coding IDE is exactly the same (same open files, same code visible, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
+- If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
 - If the user is looking down in the webcam, he's likely looking at his phone and is NOT productive.
 
 Respond with json with "yes" or "no" and reason.
