@@ -2,19 +2,23 @@
 Screenshot Describer - Captures screen and sends to OpenAI Vision API for description.
 
 Requirements:
-    pip install openai pillow mss
+    pip install openai pillow mss python-dotenv
 
 Usage:
-    Set OPENAI_API_KEY environment variable, then run:
+    Create a .env file with OPENAI_API_KEY=your-api-key, then run:
     python screenshot_describer.py
 """
 
 import base64
 import io
 import os
+from dotenv import load_dotenv
 from openai import OpenAI
 import mss
 from PIL import Image
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def capture_screenshot(monitor_number: int = 1) -> bytes:
@@ -49,7 +53,7 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
 def describe_screenshot(
     image_bytes: bytes,
     prompt: str = "Describe what you see in this screenshot in detail.",
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     max_tokens: int = 1000,
     detail: str = "auto"
 ) -> str:
@@ -59,7 +63,7 @@ def describe_screenshot(
     Args:
         image_bytes: PNG image bytes
         prompt: The question/prompt to ask about the image
-        model: OpenAI model to use (gpt-4o, gpt-4o-mini, gpt-4-turbo)
+        model: OpenAI model to use (gpt-5-mini, gpt-5, gpt-5.2, gpt-4o)
         max_tokens: Maximum tokens in response
         detail: Image detail level - "low", "high", or "auto"
                 - low: 512x512, faster, ~85 tokens
@@ -102,7 +106,7 @@ def describe_screenshot(
 def capture_and_describe(
     prompt: str = "Describe what you see in this screenshot in detail.",
     monitor_number: int = 1,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
     save_screenshot: bool = False,
     screenshot_path: str = "screenshot.png"
 ) -> str:
