@@ -21,7 +21,8 @@
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nRefactor deepwork into module and support decimal break times\nEOF\n\\)\")",
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" push)",
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" diff deepwork.py deepwork/__init__.py deepwork/threads.py)",
-      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nRefactor to auto-restore blocking when break ends without requiring input\nEOF\n\\)\")"
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nRefactor to auto-restore blocking when break ends without requiring input\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nMove prompt_confirmation to deepwork.py\nEOF\n\\)\")"
     ]
   }
 }

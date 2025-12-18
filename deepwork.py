@@ -10,10 +10,23 @@ from deepwork import (
     CONFIRMATION_PHRASE,
     is_admin,
     run_as_admin,
-    prompt_confirmation,
     modify_hosts,
     kill_target_processes,
 )
+
+
+def prompt_confirmation(phrase, action_name):
+    """Prompt user to type a confirmation phrase. Returns True if confirmed, False otherwise."""
+    try:
+        confirm_input = input(f"Please type the following phrase exactly to confirm: '{phrase}'\nEnter phrase: ")
+    except EOFError:
+        print(f"\nEOF received during confirmation, cancelling {action_name}.")
+        return False
+
+    if confirm_input.strip() != phrase:
+        print(f"Confirmation failed. {action_name.capitalize()} cancelled.")
+        return False
+    return True
 
 
 class DeepWorkState:
