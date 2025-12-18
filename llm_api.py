@@ -14,8 +14,8 @@ from openai import OpenAI
 load_dotenv()
 
 # Default model configuration
-# DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-5-mini")
-DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gemma3:4b")
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-5-nano")
+# DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gemma3:4b")
 
 # Ollama base URL for local models
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -139,6 +139,127 @@ def complete_vision(
     return response.choices[0].message.content
 
 
+def complete_vision_multi(
+    images: list[bytes],
+    prompt: str = "Describe what you see in these images.",
+    model: str | None = None,
+    max_completion_tokens: int = 4000,
+    detail: str = "auto"
+) -> str:
+    """
+    Send multiple images to OpenAI Vision API or local LLM and get a description.
+
+    Args:
+        images: List of image data as bytes (PNG, JPEG, etc.)
+        prompt: The question/prompt to ask about the images
+        model: Model to use (defaults to DEFAULT_MODEL, auto-detects local vs OpenAI)
+        max_completion_tokens: Maximum tokens in response
+        detail: Image detail level - "low", "high", or "auto" (OpenAI only)
+
+    Returns:
+        Description text from the API
+    """
+    model = model or DEFAULT_MODEL
+    client = get_client(model)
+
+    if is_local_model(model):
+        # Ollama API format: images array with base64 strings in the message
+        # Using the native Ollama format via OpenAI-compatible endpoint
+        base64_images = [encode_image_to_base64(img) for img in images]
+
+        # For Ollama, we need to use the native API format
+        # The OpenAI-compatible endpoint doesn't support multiple images well
+        # So we construct the message with multiple image_url entries
+        content = [{"type": "text", "text": prompt}]
+        for b64_img in base64_images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64_img}"}
+            })
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            max_completion_tokens=max_completion_tokens
+        )
+    else:
+        # OpenAI API format: multiple image_url entries in content array
+        content = [{"type": "text", "text": prompt}]
+        for img in images:
+            base64_image = encode_image_to_base64(img)
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{base64_image}",
+                    "detail": detail
+                }
+            })
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            max_completion_tokens=max_completion_tokens
+        )
+
+    return response.choices[0].message.content
+
+
+def test_multi_image():
+    """Test function for multi-image vision API."""
+    import mss
+
+    print("Capturing two screenshots for multi-image test...")
+
+    # Capture two screenshots
+    with mss.mss() as sct:
+        monitor = sct.monitors[1]  # Primary monitor
+        screenshot1 = sct.grab(monitor)
+        img1_bytes = mss.tools.to_png(screenshot1.rgb, screenshot1.size)
+
+    print("First screenshot captured. Press Enter to capture second...")
+    input()
+
+    with mss.mss() as sct:
+        monitor = sct.monitors[1]
+        screenshot2 = sct.grab(monitor)
+        img2_bytes = mss.tools.to_png(screenshot2.rgb, screenshot2.size)
+
+    print("Second screenshot captured. Sending to vision API...\n")
+
+    # Test with local model (Gemma 3)
+    print("=" * 50)
+    print("Testing with Gemma 3 (local):")
+    print("=" * 50)
+    try:
+        response = complete_vision_multi(
+            images=[img1_bytes, img2_bytes],
+            prompt="Compare these two screenshots. What changed between them?",
+            model="gemma3:4b"
+        )
+        print(response)
+    except Exception as e:
+        print(f"Gemma 3 error: {e}")
+
+    # Test with OpenAI model
+    print("\n" + "=" * 50)
+    print("Testing with GPT-5-nano (OpenAI):")
+    print("=" * 50)
+    try:
+        response = complete_vision_multi(
+            images=[img1_bytes, img2_bytes],
+            prompt="Compare these two screenshots. What changed between them?",
+            model="gpt-5-nano"
+        )
+        print(response)
+    except Exception as e:
+        print(f"GPT-5-nano error: {e}")
+
+
 if __name__ == "__main__":
-    response = complete_text("who are you?")
-    print(response)
+    import sys
+
+    #if len(sys.argv) > 1 and sys.argv[1] == "test_multi":
+    test_multi_image()
+    # else:
+    #     response = complete_text("who are you?")
+    #     print(response)

@@ -17,12 +17,15 @@ import mss
 import cv2
 from PIL import Image
 
-from llm_api import complete_vision, is_local_model
-from save_results import save_screenshot_with_analysis
+from llm_api import complete_vision, complete_vision_multi, is_local_model
+from save_results import save_screenshot_with_analysis, save_image, save_text, get_timestamp
 
-# Screenshot-specific model (defaults to local Gemma 3 4B)
-# SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gpt-5-mini")
-SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gemma3:4b")
+# Screenshot-specific model
+SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gpt-5-nano")
+# SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gemma3:4b")
+
+# Send images separately instead of stitched together
+SEND_IMAGES_SEPARATELY = os.environ.get("SEND_IMAGES_SEPARATELY", "true").lower() == "true"
 
 
 def get_monitor_count() -> int:
@@ -289,18 +292,33 @@ def capture_all_and_describe(
     if not images:
         raise RuntimeError("No images captured")
 
-    # Stitch all images together
-    print("Stitching images together...")
-    combined_image = stitch_images(images, labels, scale_factors)
-
     backend = "local Ollama" if is_local_model(model) else "OpenAI"
-    print(f"Sending combined image to {backend} ({model}) for analysis...")
-    description = describe_screenshot(combined_image, prompt=prompt, model=model)
+
+    if SEND_IMAGES_SEPARATELY:
+        # Send each image separately in the prompt
+        print(f"Sending {len(images)} images separately to {backend} ({model}) for analysis...")
+        description = complete_vision_multi(images, prompt=prompt, model=model)
+    else:
+        # Stitch all images together into one
+        print("Stitching images together...")
+        combined_image = stitch_images(images, labels, scale_factors)
+        print(f"Sending combined image to {backend} ({model}) for analysis...")
+        description = describe_screenshot(combined_image, prompt=prompt, model=model)
 
     if save_results:
-        image_path, text_path = save_screenshot_with_analysis(combined_image, description)
-        print(f"Combined capture saved to {image_path}")
-        print(f"Analysis saved to {text_path}")
+        if SEND_IMAGES_SEPARATELY:
+            # Save each image separately
+            timestamp = get_timestamp()
+            for i, (img, label) in enumerate(zip(images, labels)):
+                label_slug = label.lower().replace(" ", "_")
+                image_path = save_image(img, f"capture_{timestamp}_{label_slug}")
+                print(f"{label} saved to {image_path}")
+            text_path = save_text(description, f"capture_{timestamp}")
+            print(f"Analysis saved to {text_path}")
+        else:
+            image_path, text_path = save_screenshot_with_analysis(combined_image, description)
+            print(f"Combined capture saved to {image_path}")
+            print(f"Analysis saved to {text_path}")
 
     return description
 
@@ -318,7 +336,7 @@ if __name__ == "__main__":
 
     # Capture all monitors and webcam in one combined image
     description = capture_all_and_describe(
-        prompt="Describe what's on screen and what you see in the webcam. What apps are open and what is the user doing?",
+        prompt="Describe each monitor screen separately, noting what apps/content are visible on each and how they differ. Also describe what you see in the webcam - the person's appearance, posture, and what they seem to be doing.",
         save_results=True
     )
 
