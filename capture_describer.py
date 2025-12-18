@@ -17,7 +17,7 @@ import mss
 import cv2
 from PIL import Image
 
-from llm_api import complete_vision, complete_vision_multi, is_local_model
+from llm_api import complete_vision, is_local_model
 from save_results import save_screenshot_with_analysis, save_image, save_text, get_timestamp
 
 # Screenshot-specific model
@@ -166,35 +166,6 @@ def capture_screenshot(monitor_number: int = 1) -> bytes:
         return buffer.getvalue()
 
 
-def describe_screenshot(
-    image_bytes: bytes,
-    prompt: str = "Briefly describe what you see in this screenshot.",
-    model: str | None = None,
-    max_completion_tokens: int = 4000,
-    detail: str = "auto"
-) -> str:
-    """
-    Send a screenshot to OpenAI Vision API or local LLM and get a description.
-
-    Args:
-        image_bytes: PNG image bytes
-        prompt: The question/prompt to ask about the image
-        model: Model to use (defaults to SCREENSHOT_MODEL)
-        max_completion_tokens: Maximum tokens in response
-        detail: Image detail level - "low", "high", or "auto"
-
-    Returns:
-        Description text from the API
-    """
-    return complete_vision(
-        image_bytes=image_bytes,
-        prompt=prompt,
-        model=model or SCREENSHOT_MODEL,
-        max_completion_tokens=max_completion_tokens,
-        detail=detail
-    )
-
-
 def capture_and_describe(
     prompt: str = "Briefly describe what you see in this image.",
     monitor_number: int = 0,
@@ -231,7 +202,7 @@ def capture_and_describe(
 
     backend = "local Ollama" if is_local_model(model) else "OpenAI"
     print(f"Sending to {backend} ({model}) for analysis...")
-    description = describe_screenshot(image_bytes, prompt=prompt, model=model)
+    description = complete_vision(image_bytes, prompt=prompt, model=model)
 
     if save_results:
         image_path, text_path = save_screenshot_with_analysis(image_bytes, description)
@@ -295,15 +266,15 @@ def capture_all_and_describe(
     backend = "local Ollama" if is_local_model(model) else "OpenAI"
 
     if SEND_IMAGES_SEPARATELY:
-        # Send each image separately in the prompt
-        print(f"Sending {len(images)} images separately to {backend} ({model}) for analysis...")
-        description = complete_vision_multi(images, prompt=prompt, model=model)
+        # Send all images together in one prompt
+        print(f"Sending {len(images)} images to {backend} ({model}) for analysis...")
+        description = complete_vision(images, prompt=prompt, model=model)
     else:
         # Stitch all images together into one
         print("Stitching images together...")
         combined_image = stitch_images(images, labels, scale_factors)
         print(f"Sending combined image to {backend} ({model}) for analysis...")
-        description = describe_screenshot(combined_image, prompt=prompt, model=model)
+        description = complete_vision(combined_image, prompt=prompt, model=model)
 
     if save_results:
         if SEND_IMAGES_SEPARATELY:

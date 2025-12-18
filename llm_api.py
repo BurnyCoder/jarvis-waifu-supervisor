@@ -86,18 +86,18 @@ def complete_text(
 
 
 def complete_vision(
-    image_bytes: bytes,
+    images: bytes | list[bytes],
     prompt: str = "Briefly describe what you see in this image.",
     model: str | None = None,
     max_completion_tokens: int = 4000,
     detail: str = "auto"
 ) -> str:
     """
-    Send an image to OpenAI Vision API or local LLM and get a description.
+    Send one or more images to OpenAI Vision API or local LLM and get a description.
 
     Args:
-        image_bytes: Image data as bytes (PNG, JPEG, etc.)
-        prompt: The question/prompt to ask about the image
+        images: Image data as bytes, or list of image bytes for multiple images
+        prompt: The question/prompt to ask about the image(s)
         model: Model to use (defaults to DEFAULT_MODEL, auto-detects local vs OpenAI)
         max_completion_tokens: Maximum tokens in response (includes reasoning tokens for GPT-5)
         detail: Image detail level - "low", "high", or "auto"
@@ -111,80 +111,22 @@ def complete_vision(
     model = model or DEFAULT_MODEL
     client = get_client(model)
 
-    base64_image = encode_image_to_base64(image_bytes)
+    # Normalize to list
+    if isinstance(images, bytes):
+        images = [images]
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
-                            "detail": detail
-                        }
-                    }
-                ]
-            }
-        ],
-        max_completion_tokens=max_completion_tokens
-    )
-
-    return response.choices[0].message.content
-
-
-def complete_vision_multi(
-    images: list[bytes],
-    prompt: str = "Describe what you see in these images.",
-    model: str | None = None,
-    max_completion_tokens: int = 4000,
-    detail: str = "auto"
-) -> str:
-    """
-    Send multiple images to OpenAI Vision API or local LLM and get a description.
-
-    Args:
-        images: List of image data as bytes (PNG, JPEG, etc.)
-        prompt: The question/prompt to ask about the images
-        model: Model to use (defaults to DEFAULT_MODEL, auto-detects local vs OpenAI)
-        max_completion_tokens: Maximum tokens in response
-        detail: Image detail level - "low", "high", or "auto" (OpenAI only)
-
-    Returns:
-        Description text from the API
-    """
-    model = model or DEFAULT_MODEL
-    client = get_client(model)
+    content = [{"type": "text", "text": prompt}]
 
     if is_local_model(model):
-        # Ollama API format: images array with base64 strings in the message
-        # Using the native Ollama format via OpenAI-compatible endpoint
-        base64_images = [encode_image_to_base64(img) for img in images]
-
-        # For Ollama, we need to use the native API format
-        # The OpenAI-compatible endpoint doesn't support multiple images well
-        # So we construct the message with multiple image_url entries
-        content = [{"type": "text", "text": prompt}]
-        for b64_img in base64_images:
+        # Ollama: no detail parameter
+        for img in images:
+            base64_image = encode_image_to_base64(img)
             content.append({
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64_img}"}
+                "image_url": {"url": f"data:image/png;base64,{base64_image}"}
             })
-
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": content}],
-            max_completion_tokens=max_completion_tokens
-        )
     else:
-        # OpenAI API format: multiple image_url entries in content array
-        content = [{"type": "text", "text": prompt}]
+        # OpenAI: include detail parameter
         for img in images:
             base64_image = encode_image_to_base64(img)
             content.append({
@@ -195,13 +137,17 @@ def complete_vision_multi(
                 }
             })
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": content}],
-            max_completion_tokens=max_completion_tokens
-        )
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": content}],
+        max_completion_tokens=max_completion_tokens
+    )
 
-    return response.choices[0].message.content
+    return response.choices[0].message.content or ""
+
+
+# Alias for backwards compatibility
+complete_vision_multi = complete_vision
 
 
 def test_multi_image():
