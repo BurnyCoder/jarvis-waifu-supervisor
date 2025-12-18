@@ -19,6 +19,7 @@ from save_results import save_image, save_text, get_timestamp
 # Configuration via environment variables
 CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
 CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
+GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "1"))
 # CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 # CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
 
@@ -118,6 +119,7 @@ def run_productivity_monitor(save_results: bool = True):
     print("=" * 50)
 
     captured_images = []
+    last_good_job_time = time.time()
 
     while True:
         try:
@@ -159,6 +161,14 @@ def run_productivity_monitor(save_results: bool = True):
                     message = f"You are probably not being productive. {reason}"
                     print(f"\n[TTS] {message}")
                     speak(message)
+                else:
+                    # Check if it's time to say "good job"
+                    elapsed = time.time() - last_good_job_time
+                    if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
+                        message = "Good job! Keep up the great work."
+                        print(f"\n[TTS] {message}")
+                        speak(message)
+                        last_good_job_time = time.time()
 
                 if save_results:
                     text_path = save_text(analysis, f"productivity_analysis_{timestamp}")
