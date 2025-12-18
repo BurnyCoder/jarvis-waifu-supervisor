@@ -15,7 +15,9 @@
       "Bash(nvidia-smi:*)",
       "Bash(wmic cpu:*)",
       "Bash(wmic memorychip:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" add -A)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" status)"
     ]
   }
 }
