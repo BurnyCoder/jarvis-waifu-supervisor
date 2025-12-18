@@ -2,6 +2,8 @@
 
 AI-powered productivity monitor that watches your screen and webcam to keep you focused on your tasks.
 
+<img width="626" height="553" alt="image" src="https://github.com/user-attachments/assets/f15b511e-b4f6-4bb5-a164-2fc11e2252a8" />
+
 ## Features
 
 - **Website/App Blocking**: Blocks distracting websites and kills specified applications during deep work sessions
