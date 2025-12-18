@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Simple web frontend for Deep Work with Productivity Monitoring."""
 
+import logging
 import os
 import sys
 from flask import Flask, render_template_string, jsonify, request
@@ -14,6 +15,9 @@ from productivity_monitor import CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALY
 from capture_describer import SCREENSHOT_MODEL
 
 app = Flask(__name__)
+
+# Disable Flask request logging
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Global state
 state = None  # DeepWorkWithMonitoring instance
@@ -247,11 +251,13 @@ def get_status():
     global state
     mode = state.current_mode if state else "off"
     break_remaining = state.break_remaining if state else 0
+    last_analysis = state.last_analysis if state else ""
+    is_productive = state.is_productive if state else True
     return jsonify({
         "mode": mode,
         "task": web_state["task"],
-        "last_analysis": web_state["last_analysis"],
-        "is_productive": web_state["is_productive"],
+        "last_analysis": last_analysis,
+        "is_productive": is_productive,
         "break_remaining": break_remaining,
     })
 

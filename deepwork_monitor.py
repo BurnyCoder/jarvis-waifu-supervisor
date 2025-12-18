@@ -48,6 +48,8 @@ class DeepWorkWithMonitoring:
         self.productivity_prompt = PRODUCTIVITY_PROMPT_TEMPLATE.format(task=task)
         self.current_mode = "on"
         self.break_remaining = 0  # seconds remaining in break
+        self.last_analysis = ""  # last productivity analysis
+        self.is_productive = True  # last productivity status
         self.lock = threading.Lock()
         self.killer_stop_event = threading.Event()
         self.break_cancel_event = threading.Event()
@@ -72,8 +74,10 @@ class DeepWorkWithMonitoring:
             if self.killer_thread is None or not self.killer_thread.is_alive():
                 return
             self.killer_stop_event.set()
-            self.killer_thread.join(timeout=2.0)
-            print("Process killer stopped.")
+        self.killer_thread.join(timeout=5.0)
+        with self.lock:
+            self.killer_thread = None
+        print("Process killer stopped.")
 
     def _killer_loop(self):
         """Continuously kill target processes."""
@@ -97,8 +101,11 @@ class DeepWorkWithMonitoring:
             if self.monitor_thread is None or not self.monitor_thread.is_alive():
                 return
             self.monitor_stop_event.set()
-            self.monitor_thread.join(timeout=2.0)
-            print("Productivity monitor stopped.")
+        # Join outside lock to avoid deadlock
+        self.monitor_thread.join(timeout=5.0)
+        with self.lock:
+            self.monitor_thread = None
+        print("Productivity monitor stopped.")
 
     def _monitor_loop(self):
         """Productivity monitoring loop."""
@@ -135,6 +142,8 @@ class DeepWorkWithMonitoring:
                     print("=" * 50)
 
                     is_productive, reason = parse_productivity_response(analysis)
+                    self.last_analysis = analysis
+                    self.is_productive = is_productive
                     if not is_productive:
                         message = f"You are probably not being productive. {reason}"
                         print(f"\n[TTS] {message}")
