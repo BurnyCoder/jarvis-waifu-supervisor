@@ -2,6 +2,7 @@
 LLM API - Wrapper for OpenAI API calls.
 
 Provides functions for text and vision completions.
+Supports both OpenAI API and local models via Ollama.
 """
 
 import base64
@@ -12,13 +13,35 @@ from openai import OpenAI
 # Load environment variables from .env file
 load_dotenv()
 
-# Model configuration (can be overridden via OPENAI_MODEL env var)
-DEFAULT_MODEL = "gpt-5-nano"
-MODEL = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
+# Default model configuration
+# DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-5-mini")
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gemma3:4b")
+
+# Ollama base URL for local models
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 
-def get_client() -> OpenAI:
-    """Get OpenAI client instance."""
+def is_local_model(model: str) -> bool:
+    """Check if a model name refers to a local Ollama model."""
+    # Ollama models typically have format "name:tag" or known local prefixes
+    return ":" in model or model.startswith(("gemma", "llama", "mistral", "phi", "qwen"))
+
+
+def get_client(model: str) -> OpenAI:
+    """
+    Get OpenAI client instance based on model.
+
+    Args:
+        model: Model name (local models use Ollama, others use OpenAI)
+
+    Returns:
+        OpenAI client configured for either OpenAI API or local Ollama.
+    """
+    if is_local_model(model):
+        return OpenAI(
+            base_url=OLLAMA_BASE_URL,
+            api_key="ollama"  # Ollama doesn't require a real API key
+        )
     return OpenAI()
 
 
@@ -34,21 +57,19 @@ def complete_text(
     system_prompt: str | None = None
 ) -> str:
     """
-    Send a text prompt to OpenAI and get a completion.
+    Send a text prompt to OpenAI/local LLM and get a completion.
 
     Args:
         prompt: The user prompt
-        model: OpenAI model to use (defaults to MODEL from env/config)
+        model: Model to use (defaults to DEFAULT_MODEL, auto-detects local vs OpenAI)
         max_completion_tokens: Maximum tokens in response
         system_prompt: Optional system prompt
 
     Returns:
         Completion text from the API
     """
-    if model is None:
-        model = MODEL
-
-    client = get_client()
+    model = model or DEFAULT_MODEL
+    client = get_client(model)
 
     messages = []
     if system_prompt:
@@ -72,12 +93,12 @@ def complete_vision(
     detail: str = "auto"
 ) -> str:
     """
-    Send an image to OpenAI Vision API and get a description.
+    Send an image to OpenAI Vision API or local LLM and get a description.
 
     Args:
         image_bytes: Image data as bytes (PNG, JPEG, etc.)
         prompt: The question/prompt to ask about the image
-        model: OpenAI model to use (defaults to MODEL from env/config)
+        model: Model to use (defaults to DEFAULT_MODEL, auto-detects local vs OpenAI)
         max_completion_tokens: Maximum tokens in response (includes reasoning tokens for GPT-5)
         detail: Image detail level - "low", "high", or "auto"
                 - low: 512x512, faster, ~85 tokens
@@ -87,10 +108,8 @@ def complete_vision(
     Returns:
         Description text from the API
     """
-    if model is None:
-        model = MODEL
-
-    client = get_client()
+    model = model or DEFAULT_MODEL
+    client = get_client(model)
 
     base64_image = encode_image_to_base64(image_bytes)
 
@@ -118,3 +137,8 @@ def complete_vision(
     )
 
     return response.choices[0].message.content
+
+
+if __name__ == "__main__":
+    response = complete_text("who are you?")
+    print(response)

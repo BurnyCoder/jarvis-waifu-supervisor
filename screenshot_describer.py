@@ -7,6 +7,8 @@ Requirements:
 Usage:
     Create a .env file with OPENAI_API_KEY=your-api-key, then run:
     python screenshot_describer.py
+
+    For local Gemma 3 model, set SCREENSHOT_MODEL=gemma3:4b
 """
 
 import io
@@ -14,8 +16,12 @@ import os
 import mss
 from PIL import Image
 
-from llm_api import complete_vision, MODEL
+from llm_api import complete_vision, is_local_model
 from save_results import save_screenshot_with_analysis
+
+# Screenshot-specific model (defaults to local Gemma 3 4B)
+# SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gpt-5-mini")
+SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gemma3:4b")
 
 
 def get_monitor_count() -> int:
@@ -56,12 +62,12 @@ def describe_screenshot(
     detail: str = "auto"
 ) -> str:
     """
-    Send a screenshot to OpenAI Vision API and get a description.
+    Send a screenshot to OpenAI Vision API or local LLM and get a description.
 
     Args:
         image_bytes: PNG image bytes
         prompt: The question/prompt to ask about the image
-        model: OpenAI model to use (defaults to MODEL from env/config)
+        model: Model to use (defaults to SCREENSHOT_MODEL)
         max_completion_tokens: Maximum tokens in response
         detail: Image detail level - "low", "high", or "auto"
 
@@ -71,7 +77,7 @@ def describe_screenshot(
     return complete_vision(
         image_bytes=image_bytes,
         prompt=prompt,
-        model=model,
+        model=model or SCREENSHOT_MODEL,
         max_completion_tokens=max_completion_tokens,
         detail=detail
     )
@@ -89,14 +95,13 @@ def capture_and_describe(
     Args:
         prompt: The question/prompt to ask about the image
         monitor_number: Monitor to capture (0 = all monitors, 1 = primary, etc.)
-        model: OpenAI model to use (defaults to MODEL from env/config)
+        model: Model to use (defaults to SCREENSHOT_MODEL)
         save_results: Whether to save screenshot and analysis to results folders
 
     Returns:
-        Description from OpenAI Vision API
+        Description from OpenAI Vision API or local LLM
     """
-    if model is None:
-        model = MODEL
+    model = model or SCREENSHOT_MODEL
 
     if monitor_number == 0:
         print("Capturing screenshot from all monitors...")
@@ -104,7 +109,8 @@ def capture_and_describe(
         print(f"Capturing screenshot from monitor {monitor_number}...")
     image_bytes = capture_screenshot(monitor_number)
 
-    print(f"Sending to OpenAI {model} for analysis...")
+    backend = "local Ollama" if is_local_model(model) else "OpenAI"
+    print(f"Sending to {backend} ({model}) for analysis...")
     description = describe_screenshot(image_bytes, prompt=prompt, model=model)
 
     if save_results:
@@ -116,9 +122,10 @@ def capture_and_describe(
 
 
 if __name__ == "__main__":
-    if not os.environ.get("OPENAI_API_KEY"):
+    if not is_local_model(SCREENSHOT_MODEL) and not os.environ.get("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY environment variable not set.")
         print("Set it with: export OPENAI_API_KEY='your-api-key'")
+        print("Or use local model: set SCREENSHOT_MODEL=gemma3:4b")
         exit(1)
 
     monitor_count = get_monitor_count()
