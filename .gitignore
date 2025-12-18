@@ -46,8 +46,4 @@ Thumbs.db
 *.log
 
 # Screenshots and results (if generated)
-screenshots/
 results/
-*.png
-*.jpg
-*.jpeg
