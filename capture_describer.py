@@ -25,7 +25,7 @@ SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gpt-5-nano")
 # SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gemma3:4b")
 
 # Send images separately instead of stitched together
-SEND_IMAGES_SEPARATELY = os.environ.get("SEND_IMAGES_SEPARATELY", "true").lower() == "true"
+SEND_IMAGES_SEPARATELY = os.environ.get("SEND_IMAGES_SEPARATELY", "false").lower() == "true"
 
 
 def get_monitor_count() -> int:
