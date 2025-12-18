@@ -6,7 +6,7 @@ import platform
 import threading
 import time
 
-from deepwork import (
+from blocking import (
     CONFIRMATION_PHRASE,
     is_admin,
     run_as_admin,
@@ -212,7 +212,7 @@ def main():
         sys.exit(1)
 
     # Ask what user wants to be doing
-    print("What do you want to be doing? (e.g., 'coding a web app', 'studying Python')")
+    print("What do you want to be doing? (e.g., 'learn quantum physics', 'learn AI', 'research new architecture', 'train a model')")
     task = input("> ").strip()
     if not task:
         task = "coding or learning"
