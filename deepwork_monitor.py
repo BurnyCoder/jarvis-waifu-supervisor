@@ -20,6 +20,7 @@ from productivity_monitor import (
     PRODUCTIVITY_PROMPT_TEMPLATE,
     CAPTURE_INTERVAL_SECONDS,
     CAPTURES_BEFORE_ANALYSIS,
+    GOOD_JOB_INTERVAL_MINUTES,
 )
 from capture_describer import SCREENSHOT_MODEL
 from llm_api import complete_vision, is_local_model
@@ -50,6 +51,7 @@ class DeepWorkWithMonitoring:
         self.break_remaining = 0  # seconds remaining in break
         self.last_analysis = ""  # last productivity analysis
         self.is_productive = True  # last productivity status
+        self.last_good_job_time = time.time()  # for tracking good job countdown
         self.lock = threading.Lock()
         self.killer_stop_event = threading.Event()
         self.break_cancel_event = threading.Event()
@@ -148,6 +150,14 @@ class DeepWorkWithMonitoring:
                         message = f"You are probably not being productive. {reason}"
                         print(f"\n[TTS] {message}")
                         speak(message)
+                    else:
+                        # Check if it's time to say "good job"
+                        elapsed = time.time() - self.last_good_job_time
+                        if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
+                            message = "Good job! Keep up the great work."
+                            print(f"\n[TTS] {message}")
+                            speak(message)
+                            self.last_good_job_time = time.time()
 
                     text_path = save_text(analysis, f"productivity_analysis_{timestamp}")
                     print(f"Analysis saved to {text_path}")
