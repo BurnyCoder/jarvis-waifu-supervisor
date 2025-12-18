@@ -169,7 +169,13 @@ HTML_TEMPLATE = """
                 .then(r => r.json())
                 .then(data => {
                     const status = document.getElementById('status');
-                    status.textContent = data.mode.toUpperCase();
+                    let statusText = data.mode.toUpperCase();
+                    if (data.mode === 'break' && data.break_remaining > 0) {
+                        const mins = Math.floor(data.break_remaining / 60);
+                        const secs = data.break_remaining % 60;
+                        statusText += ` (${mins}:${secs.toString().padStart(2, '0')})`;
+                    }
+                    status.textContent = statusText;
                     status.className = 'status ' + data.mode;
 
                     const analysis = document.getElementById('analysis');
@@ -222,8 +228,8 @@ HTML_TEMPLATE = """
             document.getElementById('confirmDialog').classList.remove('show');
         }
 
-        // Update every 5 seconds
-        setInterval(updateStatus, 5000);
+        // Update every second for break countdown, otherwise every 5 seconds
+        setInterval(updateStatus, 1000);
         updateStatus();
     </script>
 </body>
@@ -240,11 +246,13 @@ def index():
 def get_status():
     global state
     mode = state.current_mode if state else "off"
+    break_remaining = state.break_remaining if state else 0
     return jsonify({
         "mode": mode,
         "task": web_state["task"],
         "last_analysis": web_state["last_analysis"],
         "is_productive": web_state["is_productive"],
+        "break_remaining": break_remaining,
     })
 
 

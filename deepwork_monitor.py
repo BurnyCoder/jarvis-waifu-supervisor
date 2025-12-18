@@ -47,6 +47,7 @@ class DeepWorkWithMonitoring:
         self.task = task
         self.productivity_prompt = PRODUCTIVITY_PROMPT_TEMPLATE.format(task=task)
         self.current_mode = "on"
+        self.break_remaining = 0  # seconds remaining in break
         self.lock = threading.Lock()
         self.killer_stop_event = threading.Event()
         self.break_cancel_event = threading.Event()
@@ -177,12 +178,15 @@ class DeepWorkWithMonitoring:
         print(f"Break timer: {minutes} minute(s)")
 
         for remaining in range(total_seconds, 0, -1):
+            self.break_remaining = remaining
             if self.break_cancel_event.is_set():
+                self.break_remaining = 0
                 return
             if remaining % 60 == 0 or remaining == 30 or remaining <= 10:
                 mins, secs = divmod(remaining, 60)
                 print(f"Break remaining: {mins:02d}:{secs:02d}")
             time.sleep(1)
+        self.break_remaining = 0
 
         if not self.break_cancel_event.is_set():
             print("\n*** BREAK OVER - Re-enabling blocks and monitoring ***")
