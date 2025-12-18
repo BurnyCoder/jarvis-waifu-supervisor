@@ -17,8 +17,8 @@ from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp
 
 # Configuration via environment variables
-CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "10"))
-CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
+CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
+CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
 # CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 # CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
 
@@ -29,6 +29,7 @@ Is the user productive on that task? Did anything change on his coding or learni
 Important:
 - If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
 - If the user is looking down in the webcam, he's likely looking at his phone and is NOT productive.
+- If the user has a lecture stopped (paused video, not playing), he's not learning and is NOT productive.
 
 Respond with json with "yes" or "no" and reason.
 
