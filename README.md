@@ -61,10 +61,10 @@ Environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SCREENSHOT_MODEL` | `gpt-4o` | Vision model for analysis |
-| `CAPTURE_INTERVAL_SECONDS` | `5` | Seconds between captures |
-| `CAPTURES_BEFORE_ANALYSIS` | `3` | Number of captures before sending to LLM |
-| `GOOD_JOB_INTERVAL_MINUTES` | `1` | Minutes between "good job" encouragements |
+| `SCREENSHOT_MODEL` | `gpt-5-nano` | Vision model for analysis |
+| `CAPTURE_INTERVAL_SECONDS` | `60` | Seconds between captures |
+| `CAPTURES_BEFORE_ANALYSIS` | `5` | Number of captures before sending to LLM |
+| `GOOD_JOB_INTERVAL_MINUTES` | `30` | Minutes between "good job" encouragements |
 | `OPENAI_API_KEY` | - | Required for OpenAI models |
 
 ## How It Works
