@@ -3,39 +3,25 @@
 
 import os
 import sys
-import threading
 from flask import Flask, render_template_string, jsonify, request
 
 # Add parent dir to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from blocking import (
-    CONFIRMATION_PHRASE,
-    modify_hosts,
-    kill_target_processes,
-)
-from productivity_monitor import (
-    capture_all_stitched,
-    parse_productivity_response,
-    PRODUCTIVITY_PROMPT_TEMPLATE,
-    CAPTURE_INTERVAL_SECONDS,
-    CAPTURES_BEFORE_ANALYSIS,
-)
+from blocking import CONFIRMATION_PHRASE, modify_hosts
+from deepwork_monitor import DeepWorkWithMonitoring
+from productivity_monitor import CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS
 from capture_describer import SCREENSHOT_MODEL
-from llm_api import complete_vision, is_local_model
-from save_results import save_image, save_text, get_timestamp
 
 app = Flask(__name__)
 
 # Global state
-state = {
+state = None  # DeepWorkWithMonitoring instance
+web_state = {
     "mode": "off",
     "task": "coding or learning",
     "last_analysis": "",
     "is_productive": True,
-    "monitor_thread": None,
-    "killer_thread": None,
-    "stop_event": threading.Event(),
 }
 
 HTML_TEMPLATE = """
@@ -245,123 +231,64 @@ HTML_TEMPLATE = """
 """
 
 
-def killer_loop():
-    """Continuously kill target processes."""
-    while not state["stop_event"].is_set():
-        kill_target_processes()
-        state["stop_event"].wait(timeout=1.0)
-
-
-def monitor_loop():
-    """Productivity monitoring loop."""
-    captured_images = []
-    productivity_prompt = PRODUCTIVITY_PROMPT_TEMPLATE.format(task=state["task"])
-
-    while not state["stop_event"].is_set():
-        try:
-            if state["mode"] != "on":
-                state["stop_event"].wait(timeout=1.0)
-                continue
-
-            stitched_image = capture_all_stitched()
-            captured_images.append(stitched_image)
-
-            timestamp = get_timestamp()
-            save_image(stitched_image, f"productivity_{timestamp}")
-
-            if len(captured_images) >= CAPTURES_BEFORE_ANALYSIS:
-                analysis = complete_vision(
-                    captured_images,
-                    prompt=productivity_prompt,
-                    model=SCREENSHOT_MODEL
-                )
-
-                is_productive, reason = parse_productivity_response(analysis)
-                state["last_analysis"] = analysis
-                state["is_productive"] = is_productive
-
-                save_text(analysis, f"productivity_analysis_{timestamp}")
-                captured_images = []
-
-            for _ in range(int(CAPTURE_INTERVAL_SECONDS * 10)):
-                if state["stop_event"].is_set() or state["mode"] != "on":
-                    break
-                state["stop_event"].wait(timeout=0.1)
-
-        except Exception as e:
-            print(f"Monitor error: {e}")
-            state["stop_event"].wait(timeout=CAPTURE_INTERVAL_SECONDS)
-
-
-def start_threads():
-    """Start killer and monitor threads."""
-    state["stop_event"].clear()
-
-    if state["killer_thread"] is None or not state["killer_thread"].is_alive():
-        state["killer_thread"] = threading.Thread(target=killer_loop, daemon=True)
-        state["killer_thread"].start()
-
-    if state["monitor_thread"] is None or not state["monitor_thread"].is_alive():
-        state["monitor_thread"] = threading.Thread(target=monitor_loop, daemon=True)
-        state["monitor_thread"].start()
-
-
-def stop_threads():
-    """Stop all threads."""
-    state["stop_event"].set()
-
-
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, task=state["task"], phrase=CONFIRMATION_PHRASE)
+    return render_template_string(HTML_TEMPLATE, task=web_state["task"], phrase=CONFIRMATION_PHRASE)
 
 
 @app.route('/status')
 def get_status():
+    global state
+    mode = state.current_mode if state else "off"
     return jsonify({
-        "mode": state["mode"],
-        "task": state["task"],
-        "last_analysis": state["last_analysis"],
-        "is_productive": state["is_productive"],
+        "mode": mode,
+        "task": web_state["task"],
+        "last_analysis": web_state["last_analysis"],
+        "is_productive": web_state["is_productive"],
     })
 
 
 @app.route('/set_mode', methods=['POST'])
 def set_mode():
+    global state
     data = request.json
     mode = data.get('mode', 'off')
-    task = data.get('task', state["task"])
+    task = data.get('task', web_state["task"])
     minutes = data.get('minutes', 5)
 
-    state["task"] = task
+    web_state["task"] = task
+
+    # Create new state if task changed or doesn't exist
+    if state is None or state.task != task:
+        if state:
+            state.cancel_break()
+            state.stop_killer()
+            state.stop_monitor()
+        state = DeepWorkWithMonitoring(task)
 
     if mode == 'on':
-        state["mode"] = "on"
+        state.cancel_break()
         modify_hosts(block=True)
-        start_threads()
+        state.start_killer()
+        state.start_monitor()
+        state.current_mode = "on"
 
     elif mode == 'off':
-        state["mode"] = "off"
-        stop_threads()
+        state.cancel_break()
+        state.stop_killer()
+        state.stop_monitor()
         modify_hosts(block=False)
+        state.current_mode = "off"
 
     elif mode == 'break':
-        state["mode"] = "break"
-        stop_threads()
+        state.cancel_break()
+        state.stop_killer()
+        state.stop_monitor()
         modify_hosts(block=False)
+        state.current_mode = "break"
+        state.start_break(minutes)
 
-        # Start break timer
-        def break_timer():
-            import time
-            time.sleep(minutes * 60)
-            if state["mode"] == "break":
-                state["mode"] = "on"
-                modify_hosts(block=True)
-                start_threads()
-
-        threading.Thread(target=break_timer, daemon=True).start()
-
-    return jsonify({"status": "ok", "mode": state["mode"]})
+    return jsonify({"status": "ok", "mode": state.current_mode})
 
 
 if __name__ == '__main__':
