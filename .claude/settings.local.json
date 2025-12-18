@@ -23,7 +23,12 @@
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" diff deepwork.py deepwork/__init__.py deepwork/threads.py)",
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nRefactor to auto-restore blocking when break ends without requiring input\nEOF\n\\)\")",
       "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nMove prompt_confirmation to deepwork.py\nEOF\n\\)\")",
-      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" diff --cached --stat)"
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" diff --cached --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nRename deepwork.py to deepwork_blocking.py\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" mv screenshot_describer.py capture_describer.py)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" diff --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" log --oneline -3)",
+      "Bash(git -C \"c:\\\\Users\\\\Happy\\\\Documents\\\\projects\\\\jarvis-waifu-supervisor\" commit -m \"$\\(cat <<''EOF''\nAdd webcam capture support and rename to capture_describer\n\n- Rename screenshot_describer.py to capture_describer.py\n- Add webcam capture using OpenCV \\(capture_webcam function\\)\n- Add stitch_images to combine multiple captures into one image\n- Add capture_all_and_describe for combined monitor+webcam analysis\n- Webcam image scaled 3x by default for better visibility\n- Add opencv-python to requirements.txt\nEOF\n\\)\")"
     ]
   }
 }
