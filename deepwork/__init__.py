@@ -13,10 +13,9 @@ from .hosts import modify_hosts
 from .processes import kill_target_processes
 from .threads import (
     cancel_break,
-    stop_killer_thread,
-    start_killer_thread,
+    stop_killer_task,
+    start_killer_task,
     process_killer_loop,
-    break_timer_thread,
 )
 
 __all__ = [
@@ -33,8 +32,7 @@ __all__ = [
     "modify_hosts",
     "kill_target_processes",
     "cancel_break",
-    "stop_killer_thread",
-    "start_killer_thread",
+    "stop_killer_task",
+    "start_killer_task",
     "process_killer_loop",
-    "break_timer_thread",
 ]

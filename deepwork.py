@@ -4,6 +4,7 @@
 import sys
 import platform
 import threading
+import time
 
 from deepwork import (
     CONFIRMATION_PHRASE,
@@ -11,196 +12,173 @@ from deepwork import (
     run_as_admin,
     prompt_confirmation,
     modify_hosts,
-    cancel_break,
-    stop_killer_thread,
-    start_killer_thread,
-    break_timer_thread,
+    kill_target_processes,
 )
 
 
+class DeepWorkState:
+    """Shared state for the deep work script."""
+    def __init__(self):
+        self.current_mode = "on"
+        self.lock = threading.Lock()
+        self.killer_stop_event = threading.Event()
+        self.break_cancel_event = threading.Event()
+        self.killer_thread = None
+        self.break_thread = None
+
+    def start_killer(self):
+        """Start the process killer thread."""
+        with self.lock:
+            if self.killer_thread is not None and self.killer_thread.is_alive():
+                return
+            self.killer_stop_event.clear()
+            self.killer_thread = threading.Thread(target=self._killer_loop, daemon=True)
+            self.killer_thread.start()
+            print("Process killer started.")
+
+    def stop_killer(self):
+        """Stop the process killer thread."""
+        with self.lock:
+            if self.killer_thread is None or not self.killer_thread.is_alive():
+                return
+            self.killer_stop_event.set()
+            self.killer_thread.join(timeout=2.0)
+            print("Process killer stopped.")
+
+    def _killer_loop(self):
+        """Continuously kill target processes."""
+        while not self.killer_stop_event.is_set():
+            kill_target_processes()
+            self.killer_stop_event.wait(timeout=1.0)
+
+    def start_break(self, minutes):
+        """Start a timed break."""
+        with self.lock:
+            self.break_cancel_event.clear()
+            self.break_thread = threading.Thread(
+                target=self._break_timer, args=(minutes,), daemon=True
+            )
+            self.break_thread.start()
+
+    def cancel_break(self):
+        """Cancel the current break."""
+        with self.lock:
+            if self.break_thread is not None and self.break_thread.is_alive():
+                self.break_cancel_event.set()
+                self.break_thread.join(timeout=2.0)
+                print("Break cancelled.")
+
+    def _break_timer(self, minutes):
+        """Break timer that auto-restores blocking when done."""
+        total_seconds = int(minutes * 60)
+        print(f"Break timer: {minutes} minute(s)")
+
+        for remaining in range(total_seconds, 0, -1):
+            if self.break_cancel_event.is_set():
+                return
+            if remaining % 60 == 0 or remaining == 30 or remaining <= 10:
+                mins, secs = divmod(remaining, 60)
+                print(f"Break remaining: {mins:02d}:{secs:02d}")
+            time.sleep(1)
+
+        if not self.break_cancel_event.is_set():
+            # Auto-restore blocking - this happens in the background thread
+            print("\n*** BREAK OVER - Re-enabling blocks ***")
+            with self.lock:
+                self.current_mode = "on"
+            modify_hosts(block=True)
+            self.start_killer()
+            print("Type 'off' or 'break <min>' to disable again.\n")
+
+
 def main():
-    # Check OS
     if platform.system() != "Windows":
         print("Error: This script is designed for Windows only.")
         sys.exit(1)
 
-    # Check and request admin privileges
     if not is_admin():
         print("Administrator privileges required. Requesting elevation...")
-        run_as_admin()  # This will exit the current script if elevation is successful/attempted
+        run_as_admin()
 
-    # --- Interactive Mode ---
-    current_mode = "on"  # Start in 'on' mode
-    killer_thread = None
-    stop_event = threading.Event()
-    break_end_event = threading.Event()
-    break_cancelled_event = threading.Event()
-    break_thread = None
+    state = DeepWorkState()
 
     print("--- Initializing: Ensuring system is in 'on' mode ---")
-    modify_hosts(block=True)  # Ensure blocked state initially
-    # Start the killer thread immediately for the initial 'on' state
-    killer_thread = start_killer_thread(stop_event)
+    modify_hosts(block=True)
+    state.start_killer()
 
     print("\n--- Deep Work Script Interactive Mode ---")
-    print("Commands:")
-    print("  on           - Block distractions")
-    print("  off          - Unblock distractions (requires confirmation)")
-    print("  break <min>  - Take a timed break (e.g., 'break 5' for 5 minutes)")
-    print("  exit         - Exit the script")
+    print("Commands: on | off | break <min> | exit\n")
 
     try:
         while True:
-            # Check if break timer has expired
-            if break_end_event.is_set():
-                print("\n--- Break ended, re-enabling blocks ---")
-                modify_hosts(block=True)
-                # Restart the killer thread
-                if killer_thread is None or not killer_thread.is_alive():
-                    killer_thread = start_killer_thread(stop_event)
-                current_mode = "on"
-                break_end_event.clear()
-                break_thread = None
-                print("--- Block ('on' mode) re-activated after break ---")
-
             try:
-                # Add a newline before the prompt for cleaner output
-                user_input = input(f"\nCurrent mode: {current_mode}. \nEnter command (on/off/break <min>/exit): \n").strip().lower()
-            except EOFError:  # Handle Ctrl+Z or pipe closing
-                print("\nEOF received, exiting...")
+                user_input = input(f"[{state.current_mode}] > ").strip().lower()
+            except EOFError:
                 user_input = "exit"
 
             if user_input == "on":
-                if current_mode == "on":
+                if state.current_mode == "on":
                     print("Already in 'on' mode.")
                     continue
-
-                # Cancel any active break
-                break_thread = cancel_break(break_thread, break_cancelled_event, break_end_event)
-
-                print("--- Switching to Block ('on' mode) ---")
+                state.cancel_break()
                 modify_hosts(block=True)
-                current_mode = "on"
-                # Start the killer thread if it's not running
-                if killer_thread is None or not killer_thread.is_alive():
-                    killer_thread = start_killer_thread(stop_event)
-                print("--- Block ('on' mode) activated ---")
+                state.start_killer()
+                state.current_mode = "on"
+                print("--- Block mode activated ---")
 
             elif user_input == "off":
-                if current_mode == "off":
+                if state.current_mode == "off":
                     print("Already in 'off' mode.")
                     continue
-                print("--- Switching to Unblock ('off' mode) ---")
-
-                # Cancel any active break
-                break_thread = cancel_break(break_thread, break_cancelled_event, break_end_event)
-
-                # Confirmation prompt
                 if not prompt_confirmation(CONFIRMATION_PHRASE, "'off' switch"):
                     continue
-
-                # Stop the killer thread if it's running
-                killer_thread = stop_killer_thread(killer_thread, stop_event)
+                state.cancel_break()
+                state.stop_killer()
                 modify_hosts(block=False)
-                current_mode = "off"
-                print("--- Unblock ('off' mode) activated ---")
+                state.current_mode = "off"
+                print("--- Unblock mode activated ---")
 
             elif user_input.startswith("break"):
-                # Parse the break command
                 parts = user_input.split()
                 if len(parts) != 2:
-                    print("Usage: break <minutes>  (e.g., 'break 5' for a 5-minute break)")
+                    print("Usage: break <minutes>")
                     continue
-
                 try:
-                    break_minutes = float(parts[1])
-                    if break_minutes <= 0:
-                        print("Break duration must be a positive number of minutes.")
+                    minutes = float(parts[1])
+                    if minutes <= 0:
+                        print("Duration must be positive.")
                         continue
-                    if break_minutes > 60:
-                        print("Warning: Break duration is longer than 60 minutes. Are you sure?")
-                        try:
-                            confirm = input("Type 'yes' to confirm long break: ").strip().lower()
-                            if confirm != 'yes':
-                                print("Break cancelled.")
-                                continue
-                        except EOFError:
-                            print("\nBreak cancelled.")
-                            continue
                 except ValueError:
-                    print(f"Invalid duration: '{parts[1]}'. Please enter a number of minutes.")
+                    print(f"Invalid duration: {parts[1]}")
                     continue
 
-                # Confirmation prompt for break
                 if not prompt_confirmation(CONFIRMATION_PHRASE, "break"):
                     continue
 
-                # If already on break, cancel current break first
-                if current_mode == "break":
-                    print("Cancelling current break and starting new one...")
-                    break_thread = cancel_break(break_thread, break_cancelled_event, break_end_event)
-
-                print(f"--- Starting {break_minutes}-minute break ---")
-
-                # Stop the killer thread if running
-                killer_thread = stop_killer_thread(killer_thread, stop_event)
-
-                # Unblock sites
+                state.cancel_break()
+                state.stop_killer()
                 modify_hosts(block=False)
-                current_mode = "break"
-
-                # Start the break timer thread
-                break_cancelled_event.clear()
-                break_end_event.clear()
-                break_thread = threading.Thread(
-                    target=break_timer_thread,
-                    args=(break_minutes, break_end_event, break_cancelled_event),
-                    daemon=True
-                )
-                break_thread.start()
-
-                print(f"--- Break mode active for {break_minutes} minute(s) ---")
-                print("Sites and apps are temporarily unblocked.")
-                print("Type 'on' to end break early, or wait for timer to expire.")
+                state.current_mode = "break"
+                state.start_break(minutes)
+                print(f"--- Break mode: {minutes} min ---")
 
             elif user_input == "exit":
-                print("--- Exiting Script ---")
+                print("Exiting...")
+                state.cancel_break()
+                state.stop_killer()
+                modify_hosts(block=False)
+                break
 
-                # Cancel any active break
-                break_thread = cancel_break(break_thread, break_cancelled_event, break_end_event)
-
-                # Ensure everything is unblocked on exit
-                if current_mode == "on" or current_mode == "break":
-                    print("Switching to 'off' mode before exiting...")
-                    killer_thread = stop_killer_thread(killer_thread, stop_event)
-                    modify_hosts(block=False)
-                    current_mode = "off"  # Update status for final message
-                    print("'off' mode restored.")
-                print("Exiting.")
-                break  # Exit the main loop
-
-            else:
-                print(f"Invalid command: '{user_input}'. Please use 'on', 'off', 'break <min>', or 'exit'.")
+            elif user_input:
+                print("Commands: on | off | break <min> | exit")
 
     except KeyboardInterrupt:
-        print("\nCtrl+C detected. Exiting gracefully...")
-        # Cancel any active break
-        break_thread = cancel_break(break_thread, break_cancelled_event, break_end_event)
-        # Perform cleanup similar to 'exit' command
-        if current_mode == "on" or current_mode == "break":
-            print("Switching to 'off' mode before exiting...")
-            killer_thread = stop_killer_thread(killer_thread, stop_event, timeout=2.0)
-            modify_hosts(block=False)
-            print("'off' mode restored.")
-        print("Exiting.")
-    finally:
-        # Final check to ensure thread is stopped if still alive somehow
-        if killer_thread is not None and killer_thread.is_alive():
-            print("Final check: Stopping lingering process killer thread...")
-            stop_event.set()
-            # No long join here, as we are force exiting
+        print("\nCtrl+C - Exiting...")
+        state.cancel_break()
+        state.stop_killer()
+        modify_hosts(block=False)
 
-        print("\nScript finished.")
+    print("Done.")
 
 
 if __name__ == "__main__":

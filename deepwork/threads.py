@@ -1,69 +1,56 @@
-"""Thread management for process killer and break timer."""
+"""Async task management for process killer and break timer."""
 
-import time
-import threading
+import asyncio
 
 from .processes import kill_target_processes
 
 
-def cancel_break(break_thread, break_cancelled_event, break_end_event):
-    """Cancel any active break timer. Returns None (new break_thread value)."""
-    if break_thread is not None and break_thread.is_alive():
+async def cancel_break(break_task, break_cancelled_event, break_end_event):
+    """Cancel any active break timer. Returns None (new break_task value)."""
+    if break_task is not None and not break_task.done():
         print("Cancelling active break...")
         break_cancelled_event.set()
-        break_thread.join(timeout=2.0)
+        break_task.cancel()
+        try:
+            await break_task
+        except asyncio.CancelledError:
+            pass
     break_cancelled_event.clear()
     break_end_event.clear()
     return None
 
 
-def stop_killer_thread(killer_thread, stop_event, timeout=5.0):
-    """Stop the process killer thread if running. Returns None (new killer_thread value)."""
-    if killer_thread is not None and killer_thread.is_alive():
-        print("Stopping process killer thread...")
+async def stop_killer_task(killer_task, stop_event):
+    """Stop the process killer task if running. Returns None (new killer_task value)."""
+    if killer_task is not None and not killer_task.done():
+        print("Stopping process killer task...")
         stop_event.set()
-        killer_thread.join(timeout=timeout)
-        if killer_thread.is_alive():
-            print("Warning: Process killer thread did not stop gracefully.")
+        killer_task.cancel()
+        try:
+            await killer_task
+        except asyncio.CancelledError:
+            pass
     return None
 
 
-def start_killer_thread(stop_event):
-    """Start a new process killer thread. Returns the new thread."""
-    print("Starting process killer thread...")
+async def start_killer_task(stop_event):
+    """Start a new process killer task. Returns the new task."""
+    print("Starting process killer task...")
     stop_event.clear()
-    killer_thread = threading.Thread(target=process_killer_loop, args=(stop_event,), daemon=True)
-    killer_thread.start()
-    return killer_thread
+    killer_task = asyncio.create_task(process_killer_loop(stop_event))
+    return killer_task
 
 
-def process_killer_loop(stop_event):
+async def process_killer_loop(stop_event):
     """Continuously attempts to kill target processes until stop_event is set."""
-    print("Process killer thread started.")
+    print("Process killer task started.")
     while not stop_event.is_set():
-        kill_target_processes()
-        # Check stop_event frequently for responsiveness
-        time.sleep(0.1)  # Check every 100ms
-        if stop_event.wait(timeout=0.9):  # Wait for up to 0.9s
-            break  # Exit loop if event is set during wait
-    print("Process killer thread stopped.")
-
-
-def break_timer_thread(minutes, break_end_event, break_cancelled_event):
-    """Waits for the specified minutes, then signals that break is over."""
-    total_seconds = minutes * 60
-    print(f"Break timer started: {minutes} minute(s) ({total_seconds} seconds)")
-
-    for remaining in range(total_seconds, 0, -1):
-        if break_cancelled_event.is_set():
-            print("\nBreak cancelled early.")
-            return
-        # Print countdown every 60 seconds or at specific milestones
-        if remaining % 60 == 0 or remaining == 30 or remaining <= 10:
-            mins, secs = divmod(remaining, 60)
-            print(f"Break time remaining: {mins:02d}:{secs:02d}")
-        time.sleep(1)
-
-    if not break_cancelled_event.is_set():
-        print("\n*** Break time is over! Returning to block mode... ***")
-        break_end_event.set()
+        # Run the blocking kill in a thread to not block the event loop
+        await asyncio.to_thread(kill_target_processes)
+        # Check every second
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=1.0)
+            break  # Event was set
+        except asyncio.TimeoutError:
+            pass  # Continue loop
+    print("Process killer task stopped.")
