@@ -16,6 +16,25 @@ from capture_describer import (
 from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp
 
+# Configuration via environment variables
+CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "10"))
+CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
+# CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
+# CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
+
+PRODUCTIVITY_PROMPT = """Is the user productive? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
+
+Important:
+- If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
+- If the user is looking down in the webcam, he's likely looking at his phone and is NOT productive.
+
+Respond with json with "yes" or "no" and reason.
+
+Example response:
+{"productive": "yes", "reason": "User is actively coding, screen shows IDE with code changes, user is focused on screen"}
+{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}
+{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}"""
+
 # Initialize TTS engine
 tts_engine = pyttsx3.init()
 
@@ -42,24 +61,6 @@ def parse_productivity_response(analysis: str) -> tuple[bool, str]:
         pass
     # Fallback: check if "no" appears in a productivity context
     return "productive\": \"yes" in analysis.lower(), ""
-
-
-# Configuration via environment variables
-CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "10"))
-CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
-
-PRODUCTIVITY_PROMPT = """Is the user productive? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
-
-Important:
-- If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
-- If the user is looking down in the webcam, he's likely looking at his phone and is NOT productive.
-
-Respond with json with "yes" or "no" and reason.
-
-Example response:
-{"productive": "yes", "reason": "User is actively coding, screen shows IDE with code changes, user is focused on screen"}
-{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}
-{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}"""
 
 
 def capture_all_stitched() -> bytes:
