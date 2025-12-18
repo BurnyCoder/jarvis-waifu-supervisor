@@ -17,12 +17,12 @@ from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp
 
 # Configuration via environment variables
-CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
-CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
-GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
-# CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
-# CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
-# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
+# CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
+# CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
+# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
+CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
+CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
+GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
 
 PRODUCTIVITY_PROMPT_TEMPLATE = """The user said they want to be doing: {task}
 
