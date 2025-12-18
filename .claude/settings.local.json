@@ -9,7 +9,13 @@
       "Bash(venvScriptspip install openai pillow mss)",
       "Bash(\"venv/Scripts/pip.exe\" install openai pillow mss)",
       "Bash(./venv/Scripts/pip.exe install:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(systeminfo:*)",
+      "Bash(findstr:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(wmic cpu:*)",
+      "Bash(wmic memorychip:*)",
+      "Bash(powershell:*)"
     ]
   }
 }

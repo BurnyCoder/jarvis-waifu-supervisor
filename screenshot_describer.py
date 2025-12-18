@@ -9,22 +9,13 @@ Usage:
     python screenshot_describer.py
 """
 
-import base64
 import io
 import os
-from dotenv import load_dotenv
-from openai import OpenAI
 import mss
 from PIL import Image
 
+from llm_api import complete_vision, MODEL
 from save_results import save_screenshot_with_analysis
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Model configuration (can be overridden via OPENAI_MODEL env var)
-DEFAULT_MODEL = "gpt-5-nano"
-MODEL = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
 
 
 def get_monitor_count() -> int:
@@ -45,7 +36,6 @@ def capture_screenshot(monitor_number: int = 1) -> bytes:
         PNG image bytes
     """
     with mss.mss() as sct:
-        # Get the monitor (1 = primary, 2 = secondary, etc.)
         monitor = sct.monitors[monitor_number]
         screenshot = sct.grab(monitor)
 
@@ -58,14 +48,9 @@ def capture_screenshot(monitor_number: int = 1) -> bytes:
         return buffer.getvalue()
 
 
-def encode_image_to_base64(image_bytes: bytes) -> str:
-    """Encode image bytes to base64 string."""
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-
 def describe_screenshot(
     image_bytes: bytes,
-    prompt: str = "Describe what you see in this screenshot in detail.",
+    prompt: str = "Briefly describe what you see in this screenshot.",
     model: str | None = None,
     max_completion_tokens: int = 4000,
     detail: str = "auto"
@@ -77,51 +62,24 @@ def describe_screenshot(
         image_bytes: PNG image bytes
         prompt: The question/prompt to ask about the image
         model: OpenAI model to use (defaults to MODEL from env/config)
-        max_completion_tokens: Maximum tokens in response (includes reasoning tokens for GPT-5)
+        max_completion_tokens: Maximum tokens in response
         detail: Image detail level - "low", "high", or "auto"
-                - low: 512x512, faster, ~85 tokens
-                - high: detailed crops, slower, more tokens
-                - auto: let the model decide
 
     Returns:
         Description text from the API
     """
-    if model is None:
-        model = MODEL
-
-    client = OpenAI()  # Uses OPENAI_API_KEY environment variable
-
-    base64_image = encode_image_to_base64(image_bytes)
-
-    response = client.chat.completions.create(
+    return complete_vision(
+        image_bytes=image_bytes,
+        prompt=prompt,
         model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
-                            "detail": detail
-                        }
-                    }
-                ]
-            }
-        ],
-        max_completion_tokens=max_completion_tokens
+        max_completion_tokens=max_completion_tokens,
+        detail=detail
     )
-
-    return response.choices[0].message.content
 
 
 def capture_and_describe(
-    prompt: str = "Describe what you see in this screenshot in detail.",
-    monitor_number: int = 1,
+    prompt: str = "Briefly describe what you see in this screenshot.",
+    monitor_number: int = 0,
     model: str | None = None,
     save_results: bool = False
 ) -> str:
@@ -130,7 +88,7 @@ def capture_and_describe(
 
     Args:
         prompt: The question/prompt to ask about the image
-        monitor_number: Monitor to capture (1 = primary)
+        monitor_number: Monitor to capture (0 = all monitors, 1 = primary, etc.)
         model: OpenAI model to use (defaults to MODEL from env/config)
         save_results: Whether to save screenshot and analysis to results folders
 
@@ -158,7 +116,6 @@ def capture_and_describe(
 
 
 if __name__ == "__main__":
-    # Check for API key
     if not os.environ.get("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY environment variable not set.")
         print("Set it with: export OPENAI_API_KEY='your-api-key'")
@@ -168,7 +125,7 @@ if __name__ == "__main__":
     print(f"Detected {monitor_count} monitor(s)")
 
     description = capture_and_describe(
-        prompt="Describe what you see in this screenshot. What applications are open? What is the user doing?",
+        prompt="Briefly describe what's on screen. What apps are open and what is the user doing?",
         monitor_number=0,
         save_results=True
     )
