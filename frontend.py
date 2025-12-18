@@ -204,7 +204,7 @@ HTML_TEMPLATE = """
 
                     // Update good job timer
                     const goodJobTimer = document.getElementById('goodJobTimer');
-                    if (data.mode === 'on' && data.is_productive && data.good_job_remaining > 0) {
+                    if (data.mode === 'on' && data.good_job_remaining > 0) {
                         const mins = Math.floor(data.good_job_remaining / 60);
                         const secs = data.good_job_remaining % 60;
                         goodJobTimer.textContent = `Next encouragement in ${mins}:${secs.toString().padStart(2, '0')}`;
@@ -280,7 +280,7 @@ def get_status():
 
     # Calculate seconds until next "good job"
     good_job_remaining = 0
-    if state and is_productive:
+    if state:
         elapsed = time.time() - state.last_good_job_time
         good_job_remaining = max(0, int(GOOD_JOB_INTERVAL_MINUTES * 60 - elapsed))
 

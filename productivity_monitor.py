@@ -19,9 +19,10 @@ from save_results import save_image, save_text, get_timestamp
 # Configuration via environment variables
 CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
 CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
-GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "1"))
+GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
 # CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 # CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
+# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
 
 PRODUCTIVITY_PROMPT_TEMPLATE = """The user said they want to be doing: {task}
 
@@ -39,14 +40,16 @@ Example response:
 {{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}}
 {{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}}"""
 
-# Initialize TTS engine
-tts_engine = pyttsx3.init()
-
-
+# TTS engine initialized per-call to avoid threading issues
 def speak(text: str):
     """Speak text using TTS engine."""
-    tts_engine.say(text)
-    tts_engine.runAndWait()
+    try:
+        engine = pyttsx3.init()
+        engine.say(text)
+        engine.runAndWait()
+        engine.stop()
+    except Exception as e:
+        print(f"TTS error: {e}")
 
 
 def parse_productivity_response(analysis: str) -> tuple[bool, str]:
