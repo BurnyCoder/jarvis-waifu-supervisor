@@ -17,6 +17,8 @@ from openai import OpenAI
 import mss
 from PIL import Image
 
+from save_results import save_screenshot_with_analysis
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -54,7 +56,7 @@ def describe_screenshot(
     image_bytes: bytes,
     prompt: str = "Describe what you see in this screenshot in detail.",
     model: str = "gpt-5-mini",
-    max_tokens: int = 1000,
+    max_completion_tokens: int = 4000,
     detail: str = "auto"
 ) -> str:
     """
@@ -64,7 +66,7 @@ def describe_screenshot(
         image_bytes: PNG image bytes
         prompt: The question/prompt to ask about the image
         model: OpenAI model to use (gpt-5-mini, gpt-5, gpt-5.2, gpt-4o)
-        max_tokens: Maximum tokens in response
+        max_completion_tokens: Maximum tokens in response (includes reasoning tokens for GPT-5)
         detail: Image detail level - "low", "high", or "auto"
                 - low: 512x512, faster, ~85 tokens
                 - high: detailed crops, slower, more tokens
@@ -97,7 +99,7 @@ def describe_screenshot(
                 ]
             }
         ],
-        max_tokens=max_tokens
+        max_completion_tokens=max_completion_tokens
     )
 
     return response.choices[0].message.content
@@ -107,8 +109,7 @@ def capture_and_describe(
     prompt: str = "Describe what you see in this screenshot in detail.",
     monitor_number: int = 1,
     model: str = "gpt-5-mini",
-    save_screenshot: bool = False,
-    screenshot_path: str = "screenshot.png"
+    save_results: bool = False
 ) -> str:
     """
     Convenience function to capture screenshot and get description in one call.
@@ -117,8 +118,7 @@ def capture_and_describe(
         prompt: The question/prompt to ask about the image
         monitor_number: Monitor to capture (1 = primary)
         model: OpenAI model to use
-        save_screenshot: Whether to save the screenshot to disk
-        screenshot_path: Path to save screenshot if save_screenshot is True
+        save_results: Whether to save screenshot and analysis to results folders
 
     Returns:
         Description from OpenAI Vision API
@@ -126,13 +126,13 @@ def capture_and_describe(
     print(f"Capturing screenshot from monitor {monitor_number}...")
     image_bytes = capture_screenshot(monitor_number)
 
-    if save_screenshot:
-        with open(screenshot_path, "wb") as f:
-            f.write(image_bytes)
-        print(f"Screenshot saved to {screenshot_path}")
-
     print(f"Sending to OpenAI {model} for analysis...")
     description = describe_screenshot(image_bytes, prompt=prompt, model=model)
+
+    if save_results:
+        image_path, text_path = save_screenshot_with_analysis(image_bytes, description)
+        print(f"Screenshot saved to {image_path}")
+        print(f"Analysis saved to {text_path}")
 
     return description
 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # Capture and describe the screen
     description = capture_and_describe(
         prompt="Describe what you see in this screenshot. What applications are open? What is the user doing?",
-        save_screenshot=True
+        save_results=True
     )
 
     print("\n" + "=" * 50)
