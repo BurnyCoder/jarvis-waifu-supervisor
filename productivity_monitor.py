@@ -22,7 +22,9 @@ CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
 # CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 # CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
 
-PRODUCTIVITY_PROMPT = """Is the user productive? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
+PRODUCTIVITY_PROMPT_TEMPLATE = """The user said they want to be doing: {task}
+
+Is the user productive on that task? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
 
 Important:
 - If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
@@ -31,9 +33,9 @@ Important:
 Respond with json with "yes" or "no" and reason.
 
 Example response:
-{"productive": "yes", "reason": "User is actively coding, screen shows IDE with code changes, user is focused on screen"}
-{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}
-{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}"""
+{{"productive": "yes", "reason": "User is actively coding, screen shows IDE with code changes, user is focused on screen"}}
+{{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}}
+{{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}}"""
 
 # Initialize TTS engine
 tts_engine = pyttsx3.init()
@@ -99,7 +101,16 @@ def run_productivity_monitor(save_results: bool = True):
     Args:
         save_results: Whether to save captured images and analysis to disk
     """
-    print(f"Productivity Monitor started")
+    # Ask user what they want to be doing
+    print("What do you want to be doing? (e.g., 'coding a web app', 'studying Python')")
+    task = input("> ").strip()
+    if not task:
+        task = "coding or learning"
+
+    productivity_prompt = PRODUCTIVITY_PROMPT_TEMPLATE.format(task=task)
+
+    print(f"\nProductivity Monitor started")
+    print(f"Task: {task}")
     print(f"Capture interval: {CAPTURE_INTERVAL_SECONDS} seconds")
     print(f"Captures before analysis: {CAPTURES_BEFORE_ANALYSIS}")
     print(f"Model: {SCREENSHOT_MODEL}")
@@ -131,7 +142,7 @@ def run_productivity_monitor(save_results: bool = True):
 
                 analysis = complete_vision(
                     captured_images,
-                    prompt=PRODUCTIVITY_PROMPT,
+                    prompt=productivity_prompt,
                     model=SCREENSHOT_MODEL
                 )
 
