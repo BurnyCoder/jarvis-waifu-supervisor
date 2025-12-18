@@ -115,35 +115,39 @@ def complete_vision(
     if isinstance(images, bytes):
         images = [images]
 
-    content = [{"type": "text", "text": prompt}]
-
     if is_local_model(model):
-        # Ollama: no detail parameter
+        # Ollama: use chat completions API
+        content = [{"type": "text", "text": prompt}]
         for img in images:
             base64_image = encode_image_to_base64(img)
             content.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:image/png;base64,{base64_image}"}
             })
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            max_completion_tokens=max_completion_tokens
+        )
+        return response.choices[0].message.content or ""
     else:
-        # OpenAI: include detail parameter
+        # OpenAI GPT-5: use Responses API with input_text/input_image
+        content = [{"type": "input_text", "text": prompt}]
         for img in images:
             base64_image = encode_image_to_base64(img)
             content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{base64_image}",
-                    "detail": detail
-                }
+                "type": "input_image",
+                "image_url": f"data:image/png;base64,{base64_image}",
+                "detail": detail
             })
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": content}],
-        max_completion_tokens=max_completion_tokens
-    )
-
-    return response.choices[0].message.content or ""
+        response = client.responses.create(
+            model=model,
+            input=[{"role": "user", "content": content}],
+            max_output_tokens=max_completion_tokens
+        )
+        return response.output_text or ""
 
 
 # Alias for backwards compatibility
