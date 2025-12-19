@@ -24,7 +24,7 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 state = None  # DeepWorkWithMonitoring instance
 web_state = {
     "mode": "off",
-    "task": "coding or learning",
+    "task": "",
     "last_analysis": "",
     "is_productive": True,
 }
