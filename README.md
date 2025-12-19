@@ -22,6 +22,9 @@ AI-powered productivity monitor that watches your screen and webcam to keep you 
 ## Installation
 
 ```bash
+# Install ffmpeg (required for ElevenLabs audio playback)
+winget install --id Gyan.FFmpeg -e
+
 pip install -r requirements.txt
 ```
 

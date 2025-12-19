@@ -19,9 +19,10 @@ from tts import speak
 # Configuration via environment variables
 CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
 CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
-GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
 # CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 # CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
+
+# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
 # GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
 
 PRODUCTIVITY_PROMPT_TEMPLATE = """The user said they want to be doing: {task}
@@ -156,7 +157,7 @@ def run_productivity_monitor(save_results: bool = True):
     print("=" * 50)
 
     captured_images = []
-    last_good_job_time = time.time()
+    # last_good_job_time = time.time()
 
     while True:
         try:
@@ -203,12 +204,12 @@ def run_productivity_monitor(save_results: bool = True):
                     print(f"\n[TTS] {reason}")
                     speak(reason)
                     # Check if it's time to say "good job"
-                    elapsed = time.time() - last_good_job_time
-                    if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
-                        message = "Good job! Keep up the great work."
-                        print(f"\n[TTS] {message}")
-                        speak(message)
-                        last_good_job_time = time.time()
+                    # elapsed = time.time() - last_good_job_time
+                    # if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
+                    #     message = "Good job! Keep up the great work."
+                    #     print(f"\n[TTS] {message}")
+                    #     speak(message)
+                    #     last_good_job_time = time.time()
 
                 if save_results:
                     # Save prompt and analysis together

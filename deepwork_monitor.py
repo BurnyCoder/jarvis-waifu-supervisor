@@ -19,7 +19,7 @@ from productivity_monitor import (
     PRODUCTIVITY_PROMPT_TEMPLATE,
     CAPTURE_INTERVAL_SECONDS,
     CAPTURES_BEFORE_ANALYSIS,
-    GOOD_JOB_INTERVAL_MINUTES,
+    # GOOD_JOB_INTERVAL_MINUTES,
 )
 from tts import speak
 from capture_describer import SCREENSHOT_MODEL
@@ -51,7 +51,7 @@ class DeepWorkWithMonitoring:
         self.break_remaining = 0  # seconds remaining in break
         self.last_analysis = ""  # last productivity analysis
         self.is_productive = True  # last productivity status
-        self.last_good_job_time = time.time()  # for tracking good job countdown
+        # self.last_good_job_time = time.time()  # for tracking good job countdown
         self.lock = threading.Lock()
         self.killer_stop_event = threading.Event()
         self.break_cancel_event = threading.Event()
@@ -155,12 +155,12 @@ class DeepWorkWithMonitoring:
                         print(f"\n[TTS] {reason}")
                         speak(reason)
                         # Check if it's time to say "good job"
-                        elapsed = time.time() - self.last_good_job_time
-                        if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
-                            message = "Good job! Keep up the great work."
-                            print(f"\n[TTS] {message}")
-                            speak(message)
-                            self.last_good_job_time = time.time()
+                        # elapsed = time.time() - self.last_good_job_time
+                        # if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
+                        #     message = "Good job! Keep up the great work."
+                        #     print(f"\n[TTS] {message}")
+                        #     speak(message)
+                        #     self.last_good_job_time = time.time()
 
                     # Save prompt and analysis together
                     full_text = f"PROMPT:\n{self.productivity_prompt}\n\n{'='*50}\n\nANALYSIS:\n{analysis}"
