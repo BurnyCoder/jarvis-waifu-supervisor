@@ -16,12 +16,12 @@ from blocking import (
 from productivity_monitor import (
     capture_all_stitched,
     parse_productivity_response,
-    speak,
     PRODUCTIVITY_PROMPT_TEMPLATE,
     CAPTURE_INTERVAL_SECONDS,
     CAPTURES_BEFORE_ANALYSIS,
     GOOD_JOB_INTERVAL_MINUTES,
 )
+from tts import speak
 from capture_describer import SCREENSHOT_MODEL
 from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp

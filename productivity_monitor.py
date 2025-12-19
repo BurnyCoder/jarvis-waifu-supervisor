@@ -8,13 +8,13 @@ and after a set number of captures, sends all images to LLM for productivity ana
 import json
 import os
 import time
-import pyttsx3
 from capture_describer import (
     capture_screenshot, capture_webcam, stitch_images,
     get_monitor_count, get_webcam_count, SCREENSHOT_MODEL
 )
 from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp
+from tts import speak
 
 # Configuration via environment variables
 CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
@@ -81,18 +81,6 @@ Examples (assuming user's task is mentioned above):
 {{"productive": "no", "reason": "Hey, I noticed your IDE looks the same in all screenshots. Maybe you got distracted or are stuck on something?"}}
 {{"productive": "no", "reason": "It looks like you might be checking your phone? I can't see much progress on the screen."}}
 {{"productive": "no", "reason": "The video seems paused - maybe you're taking a break or got sidetracked?"}}"""
-
-# TTS engine initialized per-call to avoid threading issues
-def speak(text: str):
-    """Speak text using TTS engine."""
-    try:
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
-        engine.stop()
-    except Exception as e:
-        print(f"TTS error: {e}")
-
 
 def parse_productivity_response(analysis: str) -> tuple[bool, str]:
     """Parse the LLM's JSON response to extract productivity status and reason."""
