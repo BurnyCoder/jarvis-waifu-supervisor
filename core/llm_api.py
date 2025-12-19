@@ -206,10 +206,6 @@ def test_multi_image():
 
 
 if __name__ == "__main__":
-    import sys
-
-    #if len(sys.argv) > 1 and sys.argv[1] == "test_multi":
     test_multi_image()
-    # else:
-    #     response = complete_text("who are you?")
-    #     print(response)
+    complete_text("who are you?")
+    

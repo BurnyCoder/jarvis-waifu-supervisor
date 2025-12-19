@@ -6,7 +6,7 @@ AI-powered productivity monitor that watches your screen and webcam to keep you 
 
 ## Features
 
-- **Website/App Blocking**: Blocks 86 distracting websites (social media, news, forums) and kills applications (Discord, Telegram, Steam) during deep work sessions
+- **Website/App Blocking**: Blocks 70+ distracting websites (social media, news, forums) and kills applications (Discord, Telegram, Steam) during deep work sessions
 - **AI Productivity Analysis**: Captures screenshots and webcam periodically, uses vision LLM to analyze if you're being productive with task-specific prompts (coding, ML training, debugging, learning, etc.)
 - **Text-to-Speech Notifications**: Speaks alerts when you're not productive, and encouragement when you're doing well. Supports ElevenLabs (10 voices with random mode) or pyttsx3 (local/offline)
 - **Web Frontend**: Simple browser UI to control modes (ON/OFF/BREAK) with confirmation phrases to prevent impulsive disabling. Shows live productivity analysis and countdown timers
@@ -70,50 +70,48 @@ Environment variables:
 |----------|---------|-------------|
 | `CAPTURE_INTERVAL_SECONDS` | `60` | Seconds between captures |
 | `CAPTURES_BEFORE_ANALYSIS` | `5` | Number of captures before sending to LLM |
-| `GOOD_JOB_INTERVAL_MINUTES` | `30` | Minutes between "good job" encouragements |
 | `SEND_IMAGES_SEPARATELY` | `false` | Send images individually instead of stitching |
 
 ### Text-to-Speech
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TTS_BACKEND` | `elevenlabs` | TTS engine: `pyttsx3` (local) or `elevenlabs` (cloud) |
+| `TTS_BACKEND` | `pyttsx3` | TTS engine: `pyttsx3` (local) or `elevenlabs` (cloud) |
 | `ELEVENLABS_API_KEY` | - | Required if using ElevenLabs |
 | `ELEVENLABS_VOICE_ID` | `EXAVITQu4vr4xnSDxMaL` | Default voice (Sarah) |
-| `ELEVENLABS_RANDOM_VOICE` | `off` | Random voice mode: `off`, `female`, `male`, or `all` |
+| `ELEVENLABS_RANDOM_VOICE` | `all` | Random voice mode: `off`, `female`, `male`, or `all` |
 
 ## How It Works
 
 1. **Capture**: Takes screenshots of all monitors and webcam image
 2. **Stitch**: Combines images into a single labeled image
 3. **Analyze**: Sends to vision LLM with your task description
-4. **Notify**: Speaks TTS message if you're not productive
-5. **Encourage**: Says "good job" periodically when you're productive
+4. **Speak**: TTS feedback - encouragement when productive, gentle nudges when not
 
 ## Files
 
 ### Main Scripts
 
 - `frontend.py` - Flask web UI for controlling deep work mode
-- `deepwork_monitor.py` - Combined blocking + monitoring backend
-- `blocking.py` - Standalone website/app blocking
+- `deepwork_monitor.py` - CLI interface for deep work with monitoring
 - `deepwork.bat` - Windows launcher with admin privileges
 
-### Modules
+### core/ Package
 
-- `capture_describer.py` - Screenshot and webcam capture, image stitching
-- `llm_api.py` - LLM API wrapper (OpenAI Responses API / Ollama)
-- `tts.py` - Text-to-speech with ElevenLabs and pyttsx3 backends
-- `save_results.py` - Save captured images and analysis to disk
-
-### deepwork/ Package
-
-- `deepwork/config.py` - Blocked websites/apps list, confirmation phrase
-- `deepwork/hosts.py` - Windows hosts file manipulation
-- `deepwork/processes.py` - Application process killing
-- `deepwork/utils.py` - Admin privileges, DNS flushing utilities
-- `deepwork/threads.py` - Background thread management for process killer and breaks
-- `deepwork/monitoring.py` - Productivity monitoring helpers (capture, analysis, TTS)
+- `core/__init__.py` - Package exports for clean imports
+- `core/config.py` - Blocked websites/apps list, confirmation phrase, intervals
+- `core/hosts.py` - Windows hosts file manipulation
+- `core/processes.py` - Application process killing
+- `core/utils.py` - Admin privileges, DNS flushing utilities
+- `core/workers.py` - Thread workers for process killing, monitoring, and break timer
+- `core/monitoring.py` - Productivity monitoring helpers (capture, analysis, TTS)
+- `core/capture_describer.py` - Screenshot and webcam capture, image stitching
+- `core/llm_api.py` - LLM API wrapper (OpenAI Responses API / Ollama)
+- `core/tts.py` - Text-to-speech with ElevenLabs and pyttsx3 backends
+- `core/save_results.py` - Save captured images and analysis to disk
+- `core/prompts.py` - Productivity analysis prompt templates
+- `core/templates.py` - Frontend HTML template
+- `core/deepwork.py` - DeepWorkWithMonitoring session manager class
 
 ## License
 
