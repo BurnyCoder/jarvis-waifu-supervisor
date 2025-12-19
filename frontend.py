@@ -2,16 +2,10 @@
 """Simple web frontend for Deep Work with Productivity Monitoring."""
 
 import logging
-import os
-import sys
 from flask import Flask, render_template_string, jsonify, request
 
-# Add parent dir to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from blocking import CONFIRMATION_PHRASE, modify_hosts
+from core import CONFIRMATION_PHRASE, SCREENSHOT_MODEL, modify_hosts
 from deepwork_monitor import DeepWorkWithMonitoring, CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS
-from capture_describer import SCREENSHOT_MODEL
 
 app = Flask(__name__)
 
@@ -135,7 +129,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🧠 Deep Work Monitor</h1>
+        <h1>Deep Work Monitor</h1>
 
         <div class="status" id="status">OFF</div>
 
@@ -242,7 +236,7 @@ HTML_TEMPLATE = """
             document.getElementById('confirmDialog').classList.remove('show');
         }
 
-        // Update every second for break countdown, otherwise every 5 seconds
+        // Update every second for break countdown
         setInterval(updateStatus, 1000);
         updateStatus();
     </script>

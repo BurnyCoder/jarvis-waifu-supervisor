@@ -17,8 +17,8 @@ import mss
 import cv2
 from PIL import Image
 
-from llm_api import complete_vision, is_local_model
-from save_results import save_screenshot_with_analysis, save_image, save_text, get_timestamp
+from .llm_api import complete_vision, is_local_model
+from .save_results import save_screenshot_with_analysis, save_image, save_text, get_timestamp
 
 # Screenshot-specific model
 SCREENSHOT_MODEL = os.environ.get("SCREENSHOT_MODEL", "gpt-5-nano")

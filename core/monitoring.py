@@ -1,13 +1,13 @@
 """Productivity monitoring helpers - capture, analysis, and TTS."""
 
 import json
-from capture_describer import (
+from .capture_describer import (
     capture_screenshot, capture_webcam, stitch_images,
     get_monitor_count, get_webcam_count, SCREENSHOT_MODEL
 )
-from llm_api import complete_vision, is_local_model
-from save_results import save_text, get_timestamp
-from tts import speak
+from .llm_api import complete_vision, is_local_model
+from .save_results import save_text, get_timestamp
+from .tts import speak
 
 
 def parse_productivity_response(analysis: str) -> tuple[bool, str]:
