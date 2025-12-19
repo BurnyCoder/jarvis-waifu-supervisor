@@ -69,10 +69,15 @@ Analyze if the user is productive on their stated task by comparing the screensh
 - Browser showing distraction sites instead of work-related content with no work progress
 
 ## Response Format
-Respond with JSON containing "productive" (yes/no) and "reason":
+Respond with JSON containing "productive" (yes/no) and "reason".
+Address the user directly with "you" and be gentle/uncertain - don't state things as absolute facts.
 
-{{"productive": "yes", "reason": "User is actively coding, visible code changes between screenshots, focused on screen"}}
-{{"productive": "no", "reason": "IDE identical in all screenshots, no code changes detected, user appears to be looking at phone"}}"""
+Examples:
+{{"productive": "yes", "reason": "Looks like you're making good progress! I can see code changes between screenshots and you seem focused."}}
+{{"productive": "yes", "reason": "Nice work! The AI agent is generating code for you and you're reviewing the output."}}
+{{"productive": "no", "reason": "Hey, I noticed your IDE looks the same in all screenshots. Maybe you got distracted or are stuck on something?"}}
+{{"productive": "no", "reason": "It looks like you might be checking your phone? I can't see much progress on the screen."}}
+{{"productive": "no", "reason": "The video seems paused - maybe you're taking a break or got sidetracked?"}}"""
 
 # TTS engine initialized per-call to avoid threading issues
 def speak(text: str):
