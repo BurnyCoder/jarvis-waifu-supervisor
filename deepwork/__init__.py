@@ -17,6 +17,13 @@ from .threads import (
     start_killer_task,
     process_killer_loop,
 )
+from .monitoring import (
+    capture_all_stitched,
+    parse_productivity_response,
+    analyze_captures,
+    speak_result,
+    save_analysis,
+)
 
 __all__ = [
     "WEBSITES_TO_BLOCK",
@@ -35,4 +42,9 @@ __all__ = [
     "stop_killer_task",
     "start_killer_task",
     "process_killer_loop",
+    "capture_all_stitched",
+    "parse_productivity_response",
+    "analyze_captures",
+    "speak_result",
+    "save_analysis",
 ]

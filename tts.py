@@ -20,7 +20,7 @@ TTS_BACKEND = os.environ.get("TTS_BACKEND", "elevenlabs").lower()
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 
 # Random voice mode: "off", "female", "male", or "all"
-ELEVENLABS_RANDOM_VOICE = os.environ.get("ELEVENLABS_RANDOM_VOICE", "off").lower()
+ELEVENLABS_RANDOM_VOICE = os.environ.get("ELEVENLABS_RANDOM_VOICE", "all").lower()
 
 # Voice pools for random selection
 FEMALE_VOICES = [

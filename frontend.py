@@ -10,9 +10,7 @@ from flask import Flask, render_template_string, jsonify, request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from blocking import CONFIRMATION_PHRASE, modify_hosts
-from deepwork_monitor import DeepWorkWithMonitoring
-from productivity_monitor import CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS, GOOD_JOB_INTERVAL_MINUTES
-import time
+from deepwork_monitor import DeepWorkWithMonitoring, CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS
 from capture_describer import SCREENSHOT_MODEL
 
 app = Flask(__name__)
@@ -149,8 +147,6 @@ HTML_TEMPLATE = """
             <button class="btn btn-off" onclick="promptOff()">OFF</button>
         </div>
 
-        <div id="goodJobTimer" style="text-align: center; margin-bottom: 15px; color: #888;"></div>
-
         <h3 style="margin-bottom: 10px;">Last Analysis:</h3>
         <div class="analysis" id="analysis">No analysis yet...</div>
     </div>
@@ -200,16 +196,6 @@ HTML_TEMPLATE = """
                         } catch (e) {}
                         analysis.textContent = displayText;
                         analysis.className = 'analysis ' + (data.is_productive ? 'productive' : 'not-productive');
-                    }
-
-                    // Update good job timer
-                    const goodJobTimer = document.getElementById('goodJobTimer');
-                    if (data.mode === 'on' && data.good_job_remaining > 0) {
-                        const mins = Math.floor(data.good_job_remaining / 60);
-                        const secs = data.good_job_remaining % 60;
-                        goodJobTimer.textContent = `Next encouragement in ${mins}:${secs.toString().padStart(2, '0')}`;
-                    } else {
-                        goodJobTimer.textContent = '';
                     }
                 });
         }
@@ -278,19 +264,12 @@ def get_status():
     last_analysis = state.last_analysis if state else ""
     is_productive = state.is_productive if state else True
 
-    # Calculate seconds until next "good job"
-    good_job_remaining = 0
-    if state:
-        elapsed = time.time() - state.last_good_job_time
-        good_job_remaining = max(0, int(GOOD_JOB_INTERVAL_MINUTES * 60 - elapsed))
-
     return jsonify({
         "mode": mode,
         "task": web_state["task"],
         "last_analysis": last_analysis,
         "is_productive": is_productive,
         "break_remaining": break_remaining,
-        "good_job_remaining": good_job_remaining,
     })
 
 

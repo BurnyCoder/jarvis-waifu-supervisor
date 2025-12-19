@@ -46,12 +46,6 @@ python frontend.py
 
 Then open http://localhost:5000 in your browser.
 
-### Standalone Productivity Monitor
-
-```bash
-python productivity_monitor.py
-```
-
 ### Command Line Deep Work
 
 ```bash
@@ -102,7 +96,6 @@ Environment variables:
 
 - `frontend.py` - Flask web UI for controlling deep work mode
 - `deepwork_monitor.py` - Combined blocking + monitoring backend
-- `productivity_monitor.py` - Standalone productivity monitoring
 - `blocking.py` - Standalone website/app blocking
 - `deepwork.bat` - Windows launcher with admin privileges
 
@@ -119,6 +112,8 @@ Environment variables:
 - `deepwork/hosts.py` - Windows hosts file manipulation
 - `deepwork/processes.py` - Application process killing
 - `deepwork/utils.py` - Admin privileges, DNS flushing utilities
+- `deepwork/threads.py` - Background thread management for process killer and breaks
+- `deepwork/monitoring.py` - Productivity monitoring helpers (capture, analysis, TTS)
 
 ## License
 
