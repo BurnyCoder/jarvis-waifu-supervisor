@@ -6,6 +6,7 @@ This module provides:
 - Screen/webcam capture and AI productivity analysis
 - Text-to-speech feedback
 - Result saving utilities
+- Deep work session management
 """
 
 # Configuration
@@ -16,6 +17,8 @@ from .config import (
     REDIRECT_IP,
     HOSTS_MARKER,
     CONFIRMATION_PHRASE,
+    CAPTURE_INTERVAL_SECONDS,
+    CAPTURES_BEFORE_ANALYSIS,
 )
 
 # Prompts
@@ -44,6 +47,12 @@ from .monitoring import (
 # Save results
 from .save_results import save_image, save_text, get_timestamp
 
+# Deep work session management
+from .deepwork import DeepWorkWithMonitoring
+
+# Templates
+from .templates import FRONTEND_HTML
+
 __all__ = [
     # Config
     "WEBSITES_TO_BLOCK",
@@ -52,6 +61,8 @@ __all__ = [
     "REDIRECT_IP",
     "HOSTS_MARKER",
     "CONFIRMATION_PHRASE",
+    "CAPTURE_INTERVAL_SECONDS",
+    "CAPTURES_BEFORE_ANALYSIS",
     # Prompts
     "PRODUCTIVITY_PROMPT_TEMPLATE",
     # Utils
@@ -75,4 +86,8 @@ __all__ = [
     "save_image",
     "save_text",
     "get_timestamp",
+    # Deep work
+    "DeepWorkWithMonitoring",
+    # Templates
+    "FRONTEND_HTML",
 ]
