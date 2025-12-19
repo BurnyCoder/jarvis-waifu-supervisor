@@ -159,7 +159,9 @@ class DeepWorkWithMonitoring:
                             speak(message)
                             self.last_good_job_time = time.time()
 
-                    text_path = save_text(analysis, f"productivity_analysis_{timestamp}")
+                    # Save prompt and analysis together
+                    full_text = f"PROMPT:\n{self.productivity_prompt}\n\n{'='*50}\n\nANALYSIS:\n{analysis}"
+                    text_path = save_text(full_text, f"productivity_analysis_{timestamp}")
                     print(f"Analysis saved to {text_path}")
 
                     captured_images = []

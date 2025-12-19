@@ -17,28 +17,62 @@ from llm_api import complete_vision, is_local_model
 from save_results import save_image, save_text, get_timestamp
 
 # Configuration via environment variables
-# CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
-# CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
-# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
-CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
-CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
-GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
+CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "5"))
+CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "3"))
+GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "0.5"))
+# CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
+# CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
+# GOOD_JOB_INTERVAL_MINUTES = float(os.environ.get("GOOD_JOB_INTERVAL_MINUTES", "30"))
 
 PRODUCTIVITY_PROMPT_TEMPLATE = """The user said they want to be doing: {task}
 
-Is the user productive on that task? Did anything change on his coding or learning part of the screen? Is he looking at screen and not on phone?
+Analyze if the user is productive on their stated task by comparing the screenshots over time.
 
-Important:
-- If the coding IDE is exactly the same (same open files, same code visible, same responses from AI agents, no changes) in all screenshots, or if the learning lecture/video is paused, the user is NOT productive.
-- If the user is looking down in the webcam, he's likely looking at his phone and is NOT productive.
-- If the user has a lecture stopped (paused video, not playing), he's not learning and is NOT productive.
+## Task-Specific Indicators
 
-Respond with json with "yes" or "no" and reason.
+**Coding / Building an app / Chatbot development:**
+- Look for: Code changes between screenshots, new lines written, cursor position changes, different files opened, terminal output changes
+- AI-assisted coding (Claude Code, Cursor, Copilot, etc.): User giving prompts, AI generating/modifying code, reviewing AI output, accepting/rejecting changes - this IS productive even if user isn't typing code themselves
+- NOT productive if: IDE shows identical code/files in all screenshots, no visible typing or changes, AND no AI agent activity
 
-Example response:
-{{"productive": "yes", "reason": "User is actively coding, screen shows IDE with code changes, user is focused on screen"}}
-{{"productive": "no", "reason": "IDE shows identical code in all screenshots with no changes, user appears distracted"}}
-{{"productive": "no", "reason": "User is looking down at phone instead of at the screen"}}"""
+**Training a model / ML work:**
+- Look for: Training logs progressing, loss values changing, new epochs starting, Jupyter notebook cells being executed, TensorBoard graphs updating, GPU utilization visible
+- NOT productive if: Training logs are static, notebook cells unchanged, no progress in metrics
+
+**Debugging:**
+- Look for: Breakpoints hit, variable inspector changes, stepping through code, console output changes, error messages being investigated, stack traces being examined
+- AI-assisted debugging: Pasting errors to AI, AI analyzing code, discussing fixes with Claude/ChatGPT - this IS productive
+- NOT productive if: Debugger paused on same line in all screenshots, no investigation happening, no AI conversation about the issue
+
+**Learning / Studying (physics, math, courses, etc.):**
+- Look for: Video playing (progress bar moving), page scrolling in textbook/PDF, notes being taken, slides advancing, practice problems being worked on
+- AI-assisted learning: Asking Claude/ChatGPT to explain concepts, working through problems together, AI tutoring - this IS productive
+- Physical notebook/exercise book: If user is looking DOWN at desk (not at phone) and appears to be writing, they may be doing math exercises on paper - this IS productive. Look for pen/pencil in hand, writing posture, textbook or problem set visible on screen
+- NOT productive if: Video paused (same frame), same page/slide visible throughout, no note-taking activity, no AI conversation, AND user not engaged with physical materials
+
+**Note-taking / Obsidian vault / Documentation:**
+- Look for: New text being written, links being created, files being organized, markdown being edited, graph view changes, new notes created
+- NOT productive if: Same note open with no changes, just browsing without editing
+
+**Reading / Research:**
+- Look for: Page scrolling, tab changes, highlighting or annotations, switching between sources, notes being taken alongside
+- NOT productive if: Same page visible throughout, no scrolling or interaction
+
+## Important Exception
+- Background audio/podcasts on YouTube are OK if user is still working (code changing, notes being taken, etc.) - this helps some people focus
+- Only flag YouTube as unproductive if user is WATCHING it (video in focus, no work progress visible)
+
+## Universal Red Flags (Always NOT productive)
+- User looking down in webcam (likely on phone)
+- Screen unchanged across ALL screenshots AND user not engaged with AI tools
+- Actively watching entertainment (social media feed scrolling, games, YouTube video in focus with no work happening)
+- Browser showing distraction sites instead of work-related content with no work progress
+
+## Response Format
+Respond with JSON containing "productive" (yes/no) and "reason":
+
+{{"productive": "yes", "reason": "User is actively coding, visible code changes between screenshots, focused on screen"}}
+{{"productive": "no", "reason": "IDE identical in all screenshots, no code changes detected, user appears to be looking at phone"}}"""
 
 # TTS engine initialized per-call to avoid threading issues
 def speak(text: str):
@@ -174,7 +208,9 @@ def run_productivity_monitor(save_results: bool = True):
                         last_good_job_time = time.time()
 
                 if save_results:
-                    text_path = save_text(analysis, f"productivity_analysis_{timestamp}")
+                    # Save prompt and analysis together
+                    full_text = f"PROMPT:\n{productivity_prompt}\n\n{'='*50}\n\nANALYSIS:\n{analysis}"
+                    text_path = save_text(full_text, f"productivity_analysis_{timestamp}")
                     print(f"Analysis saved to {text_path}")
 
                 # Reset for next batch
