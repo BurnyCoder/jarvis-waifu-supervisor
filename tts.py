@@ -15,8 +15,8 @@ Set ELEVENLABS_RANDOM_VOICE to pick random voices:
 import os
 import random
 
-# Configuration
-TTS_BACKEND = os.environ.get("TTS_BACKEND", "elevenlabs").lower()
+# Configuration: pyttsx3 or elevenlabs
+TTS_BACKEND = os.environ.get("TTS_BACKEND", "pyttsx3").lower()
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 
 # Random voice mode: "off", "female", "male", or "all"
