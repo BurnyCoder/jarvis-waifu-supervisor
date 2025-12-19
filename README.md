@@ -1,15 +1,15 @@
 # Jarvis Waifu Supervisor
 
-AI-powered productivity monitor that watches your screen and webcam to keep you focused on your tasks.
+AI-powered productivity monitor that watches your screen and webcam to keep you focused on your tasks. Deep work loop with Vision LLM and TTS, blocking websites and apps.
 
 <img width="626" height="553" alt="image" src="https://github.com/user-attachments/assets/f15b511e-b4f6-4bb5-a164-2fc11e2252a8" />
 
 ## Features
 
-- **Website/App Blocking**: Blocks distracting websites and kills specified applications during deep work sessions
-- **AI Productivity Analysis**: Captures screenshots and webcam periodically, uses vision LLM to analyze if you're being productive
-- **Text-to-Speech Notifications**: Speaks alerts when you're not productive, and encouragement when you're doing well
-- **Web Frontend**: Simple browser UI to control modes (ON/OFF/BREAK) with confirmation phrases to prevent impulsive disabling
+- **Website/App Blocking**: Blocks 86 distracting websites (social media, news, forums) and kills applications (Discord, Telegram, Steam) during deep work sessions
+- **AI Productivity Analysis**: Captures screenshots and webcam periodically, uses vision LLM to analyze if you're being productive with task-specific prompts (coding, ML training, debugging, learning, etc.)
+- **Text-to-Speech Notifications**: Speaks alerts when you're not productive, and encouragement when you're doing well. Supports ElevenLabs (10 voices with random mode) or pyttsx3 (local/offline)
+- **Web Frontend**: Simple browser UI to control modes (ON/OFF/BREAK) with confirmation phrases to prevent impulsive disabling. Shows live productivity analysis and countdown timers
 - **Break Timer**: Take timed breaks that automatically re-enable blocking when done
 
 ## Requirements
@@ -59,13 +59,31 @@ python deepwork_monitor.py
 
 Environment variables:
 
+### AI/LLM
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SCREENSHOT_MODEL` | `gpt-5-nano` | Vision model for analysis |
+| `OPENAI_API_KEY` | - | Required for OpenAI models |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Local Ollama server URL |
+
+### Capture/Analysis
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `CAPTURE_INTERVAL_SECONDS` | `60` | Seconds between captures |
 | `CAPTURES_BEFORE_ANALYSIS` | `5` | Number of captures before sending to LLM |
 | `GOOD_JOB_INTERVAL_MINUTES` | `30` | Minutes between "good job" encouragements |
-| `OPENAI_API_KEY` | - | Required for OpenAI models |
+| `SEND_IMAGES_SEPARATELY` | `false` | Send images individually instead of stitching |
+
+### Text-to-Speech
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TTS_BACKEND` | `elevenlabs` | TTS engine: `pyttsx3` (local) or `elevenlabs` (cloud) |
+| `ELEVENLABS_API_KEY` | - | Required if using ElevenLabs |
+| `ELEVENLABS_VOICE_ID` | `EXAVITQu4vr4xnSDxMaL` | Default voice (Sarah) |
+| `ELEVENLABS_RANDOM_VOICE` | `off` | Random voice mode: `off`, `female`, `male`, or `all` |
 
 ## How It Works
 
@@ -77,13 +95,27 @@ Environment variables:
 
 ## Files
 
-- `frontend.py` - Web UI for controlling deep work mode
+### Main Scripts
+
+- `frontend.py` - Flask web UI for controlling deep work mode
 - `deepwork_monitor.py` - Combined blocking + monitoring backend
 - `productivity_monitor.py` - Standalone productivity monitoring
-- `blocking.py` - Website/app blocking logic
-- `capture_describer.py` - Screenshot and webcam capture
-- `llm_api.py` - LLM API wrapper (OpenAI/Ollama)
+- `blocking.py` - Standalone website/app blocking
 - `deepwork.bat` - Windows launcher with admin privileges
+
+### Modules
+
+- `capture_describer.py` - Screenshot and webcam capture, image stitching
+- `llm_api.py` - LLM API wrapper (OpenAI Responses API / Ollama)
+- `tts.py` - Text-to-speech with ElevenLabs and pyttsx3 backends
+- `save_results.py` - Save captured images and analysis to disk
+
+### deepwork/ Package
+
+- `deepwork/config.py` - Blocked websites/apps list, confirmation phrase
+- `deepwork/hosts.py` - Windows hosts file manipulation
+- `deepwork/processes.py` - Application process killing
+- `deepwork/utils.py` - Admin privileges, DNS flushing utilities
 
 ## License
 
