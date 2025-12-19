@@ -66,6 +66,13 @@ class ProductivityMonitorThread(ManagedThread):
         self.on_analysis = on_analysis
 
     def _run(self):
+        # Initial delay before first capture
+        print(f"Starting capture in {CAPTURE_INTERVAL_SECONDS}s...")
+        for _ in range(int(CAPTURE_INTERVAL_SECONDS * 10)):
+            if self._stop_event.is_set():
+                return
+            time.sleep(0.1)
+
         captured_images = []
 
         while not self._stop_event.is_set():
