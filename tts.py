@@ -73,7 +73,7 @@ def speak_elevenlabs(text: str):
     """Speak text using ElevenLabs API."""
     try:
         from elevenlabs.client import ElevenLabs
-        from elevenlabs import play
+        from elevenlabs.play import play
 
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
         voice_id = get_voice_id()
