@@ -71,10 +71,13 @@ Analyze if the user is productive on their stated task by comparing the screensh
 ## Response Format
 Respond with JSON containing "productive" (yes/no) and "reason".
 Address the user directly with "you" and be gentle/uncertain - don't state things as absolute facts.
+Reference the user's stated task in your response to make it personal.
 
-Examples:
-{{"productive": "yes", "reason": "Looks like you're making good progress! I can see code changes between screenshots and you seem focused."}}
-{{"productive": "yes", "reason": "Nice work! The AI agent is generating code for you and you're reviewing the output."}}
+Examples (assuming user's task is mentioned above):
+{{"productive": "yes", "reason": "Nice progress on your chatbot app! I see you added a new function and the tests are running in the terminal. Keep it up!"}}
+{{"productive": "yes", "reason": "Good work on your quantum physics notes! You added a new section about wave functions in Obsidian. Stay focused!"}}
+{{"productive": "yes", "reason": "Great learning session! The MIT lecture moved from 12:30 to 15:45 and you're looking at the screen taking it in."}}
+{{"productive": "yes", "reason": "Solid progress on your AI agent! Claude Code generated a new API endpoint and you're reviewing the diff. Nice teamwork!"}}
 {{"productive": "no", "reason": "Hey, I noticed your IDE looks the same in all screenshots. Maybe you got distracted or are stuck on something?"}}
 {{"productive": "no", "reason": "It looks like you might be checking your phone? I can't see much progress on the screen."}}
 {{"productive": "no", "reason": "The video seems paused - maybe you're taking a break or got sidetracked?"}}"""
@@ -197,13 +200,16 @@ def run_productivity_monitor(save_results: bool = True):
                 print(analysis)
                 print("=" * 50)
 
-                # Parse response and speak if not productive
+                # Parse response and speak result
                 is_productive, reason = parse_productivity_response(analysis)
                 if not is_productive:
                     message = f"You are probably not being productive. {reason}"
                     print(f"\n[TTS] {message}")
                     speak(message)
                 else:
+                    # Speak the productive reason
+                    print(f"\n[TTS] {reason}")
+                    speak(reason)
                     # Check if it's time to say "good job"
                     elapsed = time.time() - last_good_job_time
                     if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:

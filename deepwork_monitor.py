@@ -151,6 +151,9 @@ class DeepWorkWithMonitoring:
                         print(f"\n[TTS] {message}")
                         speak(message)
                     else:
+                        # Speak the productive reason
+                        print(f"\n[TTS] {reason}")
+                        speak(reason)
                         # Check if it's time to say "good job"
                         elapsed = time.time() - self.last_good_job_time
                         if elapsed >= GOOD_JOB_INTERVAL_MINUTES * 60:
