@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Callable
 
-from .config import CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS
+from .config import CAPTURE_INTERVAL_SECONDS, CAPTURES_BEFORE_ANALYSIS, POSITIVE_TTS_EVERY_N
 from .processes import kill_target_processes
 from .monitoring import capture_all_stitched, analyze_captures, speak_result, save_analysis
 from .save_results import save_image, get_timestamp
@@ -64,6 +64,7 @@ class ProductivityMonitorThread(ManagedThread):
         super().__init__("Productivity monitor")
         self.prompt = prompt
         self.on_analysis = on_analysis
+        self._positive_count = 0
 
     def _run(self):
         # Initial delay before first capture
@@ -95,7 +96,17 @@ class ProductivityMonitorThread(ManagedThread):
                     )
                     self.on_analysis(analysis, is_productive)
 
-                    speak_result(is_productive, reason)
+                    if is_productive:
+                        self._positive_count += 1
+                        if self._positive_count >= POSITIVE_TTS_EVERY_N:
+                            speak_result(is_productive, reason)
+                            self._positive_count = 0
+                        else:
+                            print(f"[TTS] Skipping positive feedback ({self._positive_count}/{POSITIVE_TTS_EVERY_N})")
+                    else:
+                        self._positive_count = 0
+                        speak_result(is_productive, reason)
+
                     save_analysis(self.prompt, analysis)
 
                     captured_images = []

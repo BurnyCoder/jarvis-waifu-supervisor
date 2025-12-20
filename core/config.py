@@ -9,6 +9,9 @@ import os
 CAPTURE_INTERVAL_SECONDS = float(os.environ.get("CAPTURE_INTERVAL_SECONDS", "60"))
 CAPTURES_BEFORE_ANALYSIS = int(os.environ.get("CAPTURES_BEFORE_ANALYSIS", "5"))
 
+# Speak positive TTS feedback every N times (1 = every time, 6 = every 6th time)
+POSITIVE_TTS_EVERY_N = int(os.environ.get("POSITIVE_TTS_EVERY_N", "6"))
+
 # Websites to block (add more if needed)
 WEBSITES_TO_BLOCK = [
     "facebook.com",
