@@ -81,6 +81,18 @@ the AI can be wrong, and anyone with administrator access can undo the policy.
      not justify an invented static-work exception. Timestamps, clocks, cursors,
      animations, webcam lighting, minor posture changes, and unrelated visible
      changes do not establish progress.
+   - Mathematics worked out on a tablet is a supported static-work case. A
+     visibly recognizable unsolved exercise, equation, or problem statement can
+     corroborate a concrete math topic even while it stays unchanged onscreen,
+     but only alongside webcam evidence of stylus use, handwriting, or a
+     task-directed calculation posture. The tablet surface and fresh handwriting
+     need not appear in every snapshot, and brief thinking pauses may occur while
+     the combined evidence remains coherent. That combination can establish
+     sustained focus across a long interval; it does not establish solution
+     progress unless chronological evidence shows advancement. The exercise,
+     device or stylus presence, looking down, or posture changes without
+     task-directed engagement are insufficient, and clear unrelated browsing,
+     media, chat, or gaming remains off-track.
    - A music video may occupy only a secondary part of a monitor as neutral,
      work-supporting background media. It does not establish productivity:
      capture one still requires genuine task-aligned engagement, and from
@@ -800,7 +812,10 @@ access, an API call, capture hardware, or audio playback.
   pixels wide and JPEG-compressed. Tall multi-panel composites, compression,
   occlusion, visually ambiguous activity, and work whose progress is not
   observable can still produce an incorrect verdict. The frequent agent watcher
-  intentionally remains low-detail and can miss small screen text.
+  intentionally remains low-detail and can miss small screen text. Tablet-math
+  recognition also depends on camera framing: an unchanged onscreen exercise is
+  deliberately insufficient when corroborating stylus/calculation behavior is
+  occluded or ambiguous.
 - **Agent-watch transitions are not revision-checked after inference:** unlike
   productivity analysis, the watcher checks eligibility only before capture.
   A concurrent session, mode, or agentic-toggle change during capture/model work

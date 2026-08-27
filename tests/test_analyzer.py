@@ -85,6 +85,52 @@ def test_prompt_requires_task_aware_meaningful_snapshot_comparison():
     assert "why that evidence is or is not adequate for the stated task" in prompt
 
 
+def test_prompt_recognizes_tablet_math_as_evidence_backed_static_work():
+    """An unchanged exercise can corroborate, but never prove, tablet work."""
+
+    prompt = SYSTEM_PROMPT.lower()
+    # A math-specific topic and recognizable exercise establish why an unchanged
+    # desktop may be expected while the actual calculation happens elsewhere.
+    assert "mathematics worked out on a tablet" in prompt
+    assert "unsolved exercise text, equations, or a problem statement" in prompt
+    assert "corroborating task-alignment evidence" in prompt
+    assert "need not be fully legible" in prompt
+    assert "change onscreen while the user solves it on the tablet" in prompt
+    # The exception still needs independent webcam evidence of real external work,
+    # but ordinary camera framing need not expose the tablet surface itself.
+    assert "combine that screen hint with concrete webcam evidence" in prompt
+    assert (
+        "visible stylus use, handwriting, or a task-directed calculation posture"
+        in prompt
+    )
+    assert "tablet itself may be below or outside the webcam frame" in prompt
+    assert "do not require the tablet surface or new handwriting" in prompt
+    assert "to be visible in every snapshot" in prompt
+    assert "brief calculation or thinking pauses do not break engagement" in prompt
+    assert (
+        "do not infer a stall solely from the unchanged exercise or desktop"
+        in prompt
+    )
+    assert "even over a long interval" in prompt
+    # Sustained engagement is not automatically evidence that the solution advanced.
+    assert (
+        "supports praise for focus, not a claim that the solution progressed"
+        in prompt
+    )
+    assert "unless chronological evidence shows advancement" in prompt
+    # Neither props nor generic body position may turn the exception into a loophole.
+    assert "exercise displayed by itself" in prompt
+    assert (
+        "generic looking down, minor posture changes, or holding a stylus"
+        in prompt
+    )
+    assert "without task-directed engagement do not prove productivity" in prompt
+    assert (
+        "clear unrelated browsing, media, chat, or gaming remains unproductive"
+        in prompt
+    )
+
+
 def test_prompt_treats_partial_music_video_as_neutral_only_beside_real_work():
     """A background music video cannot excuse missing or stalled task progress."""
 
