@@ -5,11 +5,18 @@
 
 import threading
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
 from deepwork.config import CONFIRMATION_PHRASE
-from deepwork.state import GoalAccessInfo, Mode, SessionState, goal_access_event
+from deepwork.state import (
+    GoalAccessFeedbackRequest,
+    GoalAccessInfo,
+    Mode,
+    SessionState,
+    goal_access_event,
+)
 
 T0 = datetime(2026, 7, 7, 9, 0, 0)  # fixed reference instant for all tests
 
@@ -790,9 +797,264 @@ def test_verdict_streak_praise_and_nudge():
     assert s.record_verdict(False, minutes=25) == "nudge"
     # 25 productive minutes: no praise yet (threshold is 30).
     assert s.record_verdict(True, minutes=25) is None
-    # Crossing 30 consecutive minutes → one "praise", then streak restarts.
+    # Crossing 30 consecutive minutes triggers praise and restarts the streak.
     assert s.record_verdict(True, minutes=25) == "praise"
     assert s.record_verdict(True, minutes=25) is None
+
+
+def test_verdict_record_has_stable_identity_and_correction_metadata():
+    """Every model result carries the immutable source label and correction key."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+
+    s.record_verdict(
+        False,
+        minutes=5,
+        reason="stalled",
+        observed="editor unchanged",
+        now=T0 + timedelta(minutes=5),
+    )
+
+    entry = s.last_verdict
+    assert entry is not None
+    assert str(UUID(entry["verdict_id"])) == entry["verdict_id"]
+    assert entry["model_productive"] is False
+    assert entry["productive"] is False
+    assert entry["credited_minutes"] == 5
+    assert entry["correction_revision"] == 0
+    assert entry["corrected_at"] is None
+
+
+def test_latest_verdict_correction_replays_exact_streak_and_can_be_undone():
+    """Correction re-folds the latest interval from its pre-verdict streak."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    s.record_verdict(True, minutes=5, now=T0 + timedelta(minutes=5))
+    s.record_verdict(True, minutes=5, now=T0 + timedelta(minutes=10))
+    s.record_verdict(False, minutes=5, now=T0 + timedelta(minutes=15))
+    target = dict(s.last_verdict)
+
+    corrected = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=16),
+    )
+
+    assert corrected is not None and corrected.changed is True
+    assert corrected.evaluated_at == T0 + timedelta(minutes=15)
+    assert corrected.model_productive is False
+    assert corrected.from_productive is False
+    assert corrected.to_productive is True
+    assert corrected.credited_minutes == 5
+    assert corrected.correction_revision == 1
+    assert corrected.changed_at == T0 + timedelta(minutes=16)
+    assert corrected.streak_adjusted is True
+    assert corrected.productive_streak_min == 15
+    assert corrected.restored_model_verdict is False
+    assert s.last_verdict["model_productive"] is False
+    assert s.last_verdict["productive"] is True
+    assert s.last_verdict["correction_revision"] == 1
+    assert s.last_verdict["corrected_at"] == (
+        T0 + timedelta(minutes=16)
+    ).isoformat()
+
+    # A duplicated browser retry is idempotent even with its original revision.
+    duplicate = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=17),
+    )
+    assert duplicate is not None and duplicate.changed is False
+    assert duplicate.correction_revision == 1
+    assert s.productive_streak_min == 15
+
+    restored = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=1,
+        productive=False,
+        now=T0 + timedelta(minutes=18),
+    )
+    assert restored is not None and restored.changed is True
+    assert restored.correction_revision == 2
+    assert restored.productive_streak_min == 0
+    assert restored.restored_model_verdict is True
+    assert s.last_verdict["productive"] is False
+    assert s.last_verdict["corrected_at"] is None
+
+
+def test_productive_model_verdict_can_be_corrected_off_track_and_restored():
+    """The inverse correction direction resets then exactly restores its streak."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    s.record_verdict(True, minutes=10, now=T0 + timedelta(minutes=10))
+    s.record_verdict(True, minutes=5, now=T0 + timedelta(minutes=15))
+    target = dict(s.last_verdict)
+
+    corrected = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=False,
+        now=T0 + timedelta(minutes=16),
+    )
+
+    assert corrected is not None and corrected.changed is True
+    assert corrected.model_productive is True
+    assert corrected.productive_streak_min == 0
+    assert s.last_verdict["productive"] is False
+
+    restored = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=1,
+        productive=True,
+        now=T0 + timedelta(minutes=17),
+    )
+
+    assert restored is not None and restored.changed is True
+    assert restored.restored_model_verdict is True
+    assert restored.productive_streak_min == 15
+    assert s.last_verdict["corrected_at"] is None
+
+
+def test_correction_preserves_thirty_minute_rollover_without_replaying_outcome():
+    """A corrected interval crossing the milestone has the normal zero remainder."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    s.record_verdict(True, minutes=25, now=T0 + timedelta(minutes=25))
+    s.record_verdict(False, minutes=5, now=T0 + timedelta(minutes=30))
+    target = dict(s.last_verdict)
+
+    corrected = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=31),
+    )
+
+    assert corrected is not None and corrected.changed is True
+    assert corrected.streak_adjusted is True
+    assert corrected.productive_streak_min == 0
+
+
+def test_completed_break_invalidates_latest_verdict_streak_accounting():
+    """Historical correction after a break cannot resurrect its ended streak."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    s.record_verdict(True, minutes=10, now=T0 + timedelta(minutes=10))
+    target = dict(s.last_verdict)
+    ok, reason = s.start_break("walk", 5, "away", now=T0 + timedelta(minutes=11))
+    assert ok and reason == ""
+    assert s.stop_break(now=T0 + timedelta(minutes=12)) is not None
+    assert s.productive_streak_min == 0
+
+    corrected = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=False,
+        now=T0 + timedelta(minutes=13),
+    )
+
+    assert corrected is not None and corrected.changed is True
+    assert corrected.streak_adjusted is False
+    assert corrected.productive_streak_min == 0
+    assert s.last_verdict["productive"] is False
+
+
+def test_latest_verdict_correction_rejects_stale_identity_or_revision():
+    """UUID and revision form an optimistic concurrency boundary."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    s.record_verdict(False, minutes=5, now=T0 + timedelta(minutes=5))
+    target = dict(s.last_verdict)
+
+    assert s.correct_latest_verdict(
+        str(uuid4()),
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=6),
+    ) is None
+    first = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=7),
+    )
+    assert first is not None and first.changed is True
+    assert s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=False,
+        now=T0 + timedelta(minutes=8),
+    ) is None
+    assert s.last_verdict["productive"] is True
+
+    # Even a same-label request conflicts after a full false/true ABA cycle;
+    # only a retry of the immediately preceding successful toggle is a no-op.
+    restored = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=1,
+        productive=False,
+        now=T0 + timedelta(minutes=9),
+    )
+    assert restored is not None and restored.changed is True
+    corrected_again = s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=2,
+        productive=True,
+        now=T0 + timedelta(minutes=10),
+    )
+    assert corrected_again is not None and corrected_again.changed is True
+    assert s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=0,
+        productive=True,
+        now=T0 + timedelta(minutes=11),
+    ) is None
+
+    s.start_session("new session", now=T0 + timedelta(minutes=12))
+    assert s.correct_latest_verdict(
+        target["verdict_id"],
+        expected_revision=3,
+        productive=False,
+        now=T0 + timedelta(minutes=13),
+    ) is None
+
+
+def test_context_summary_freezes_elapsed_minutes_after_disable():
+    """Late correction prompts describe the finished session's real duration."""
+
+    s = make_state()
+    s.start_session("write", now=T0)
+    assert s.try_disable(CONFIRMATION_PHRASE, now=T0 + timedelta(minutes=10))
+
+    context = s.context_summary(now=T0 + timedelta(hours=1))
+
+    assert "minutes into session: 10" in context
+
+
+def test_policy_independent_feedback_waits_only_for_event_release():
+    """Corrections bypass hosts-policy approval but retain JSONL-before-speech."""
+
+    s = make_state()
+    request = GoalAccessFeedbackRequest(
+        kind="verdict_correction",
+        context=(("corrected_label", "productive"),),
+        policy_revision=s.feedback_policy_revision,
+        waits_for_policy=False,
+    )
+
+    s.queue_goal_access_feedback(request)
+
+    assert s.pop_ready_goal_access_feedback() is None
+    assert s.release_goal_access_feedback() is True
+    assert s.pop_ready_goal_access_feedback() == request
 
 
 def test_monitoring_only_active_when_on():

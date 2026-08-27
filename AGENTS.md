@@ -59,10 +59,10 @@ Implementation details live under `deepwork/`:
 | `config.py` | Frozen `.env`-derived `Config`; hardcoded site/app policy tables and hostname expansion; sparse numeric validation |
 | `access_policy.py` | Immutable 14-option website/app catalog; labels/capabilities; strict normalization; site/app projection; `projects.json` loading and task/preset union |
 | `logging_setup.py` | Timestamped UTF-8 file and terminal root logging |
-| `state.py` | Locked modes, terminal shutdown, grant lifecycle/feedback coordination, versioned monitoring context, retryable policy reconciliation, breaks, allowance, verdicts, and status |
+| `state.py` | Locked modes, terminal shutdown, grant/feedback coordination, versioned monitoring context, retryable policy reconciliation, breaks, allowance, identified/effectively corrected verdicts, and status |
 | `storage.py` | Quality-80 capture JPEGs, text/vision exchange JSON, retryable ordered session JSONL, and persisted allowance/topic state |
 | `runtime_status.py` | Locked JSON-safe fixed-delay loop cadence, phase, result, countdown, and error state |
-| `scheduler.py` | Enforcer (including access expiry and dirty-policy retry), context-safe productivity monitor, and agent-watch loops |
+| `scheduler.py` | Enforcer (including access expiry and dirty-policy retry), context-safe productivity monitor with stale-feedback suppression, and agent-watch loops |
 | `blocking/admin.py` | Windows admin test and `runas` self-relaunch |
 | `blocking/hosts_blocker.py` | Direct marker-fenced hosts replacement/removal and best-effort DNS-cache flush; dry-run adapter |
 | `blocking/app_killer.py` | Abrupt case-insensitive exact process-name termination with psutil |
@@ -70,13 +70,13 @@ Implementation details live under `deepwork/`:
 | `monitoring/webcam_capture.py` | DirectShow camera-index-0 frame; an unsuccessful read returns `None`, while exceptions fail that capture tick |
 | `monitoring/stitcher.py` | Labeled vertical composite after resizing each monitor/webcam tile to 960 pixels wide |
 | `monitoring/analyzer.py` | Original-detail productivity verdict: current alignment on capture 1 and task-aware rolling comparison from capture 2; low-detail single-capture agent-activity verdict |
-| `feedback/goal_access.py` | Policy-revision-gated transition acknowledgments and independent FIFO message-generation worker |
-| `feedback/messages.py` | Context-grounded good-luck, nudge, milestone-praise, break, goal-access, and agent-transition text |
+| `feedback/goal_access.py` | Policy-optional, event-durability-gated transition acknowledgments and independent FIFO message-generation worker |
+| `feedback/messages.py` | Context-grounded good-luck, nudge, milestone-praise, break, goal-access, verdict-correction, and agent-transition text |
 | `feedback/tts.py` | OpenAI temporary WAV or per-utterance pyttsx3 speaker behind one FIFO daemon worker |
-| `webui/app.py` | Flask factory and state-changing session, access, break, agent, and disable routes |
+| `webui/app.py` | Flask factory and state-changing session, access, break, agent, latest-verdict correction, and disable routes |
 | `webui/status.py` | Composition of state and scheduler snapshots |
 | `webui/server.py` | Loopback threaded Werkzeug serving, optional `/status` readiness polling, and one-time default-browser launch |
-| `webui/templates/`, `static/` | Actions-first dashboard and safe non-overlapping polling |
+| `webui/templates/`, `static/` | Actions-first dashboard, latest-verdict correction form, and safe non-overlapping polling |
 
 ## Behavioral invariants
 
@@ -143,6 +143,34 @@ Implementation details live under `deepwork/`:
   context-accepted verdict is recorded before JSONL append and optional message
   generation; if either fails, the tick may publish an in-memory verdict
   without queuing its otherwise single utterance.
+- Every accepted productivity result has a stable UUID, immutable
+  `model_productive`, effective `productive`, `credited_minutes`, and a
+  correction revision. Only the latest current-session verdict is correctable.
+  `POST /verdict/correct` requires `verdict_id`, nonnegative
+  `expected_revision`, and exact lowercase `productive=true|false`; malformed
+  input is 400 and stale identity/revision is 409. Retrying the immediately
+  preceding successful command, or submitting a current-revision no-op, is an
+  idempotent redirect with no new revision, event, model call, or speech; an
+  older same-label request after an ABA cycle is stale. An accepted reverse or
+  restore increments the revision;
+  `corrected_at` is non-null only while effective differs from the model label.
+- Refold a changed latest interval from its captured pre-verdict streak using
+  `credited_minutes`; off-track resets it and reaching 30 minutes uses the
+  ordinary zero remainder without replaying nudge/praise. An active BREAK still
+  preserves that streak for correction, but completing the break invalidates
+  the interval's accounting link: later correction changes effective history
+  and rate without resurrecting the post-break streak. OFF may correct its
+  preserved history. Corrections never change analyzer history/prompts,
+  enforcement, access, break timing, or social allowance.
+- Hold the shared lifecycle coordinator through the source `verdict` JSONL
+  append so a correction cannot overtake it. Each real change appends a
+  `verdict_corrected` audit record and queues one neutral AI-written
+  `verdict_correction` acknowledgement. The correction is live even if append
+  fails, but feedback is policy-independent and waits for ordered event
+  durability. Suppress the original verdict utterance if any correction lands
+  before it reaches speech; work already sent to a model may still complete and
+  persist. Duplicate, stale, model, or speech failures never roll correction
+  state back.
 - Scheduler intervals are fixed delays after a tick finishes, not wall-clock
   schedules. Starting a session does not reset their countdowns.
 - Productivity and agent-watch ticks share one capture lock. Hold it only
@@ -237,8 +265,10 @@ Implementation details live under `deepwork/`:
 - `/status` must remain JSON-safe, additive, and `Cache-Control: no-store`.
   Canonical group keys/labels coexist with derived site/app arrays in
   `work_access`, `goal_access`, and `break`; equivalent event payloads retain
-  derived arrays for diagnostics and older-log readability. Render model text
-  as text, never trusted HTML.
+  derived arrays for diagnostics and older-log readability. Verdict entries
+  expose both immutable model and effective correction fields; matching monitor
+  runtime copy uses `verdict_id` and the effective label without inventing a new
+  run. Render model text as text, never trusted HTML.
 - The Werkzeug development server hosting Flask stays on `127.0.0.1`. Server
   construction binds `UI_PORT` before any browser worker starts. With
   `--open-browser`, a 30-second monotonic deadline retries `/status`, treats any
@@ -263,6 +293,11 @@ Implementation details live under `deepwork/`:
   object under `results/llm/`. For vision requests, persist full text plus
   capture-file references instead of duplicating base64 image bytes. Failed
   calls and streamed TTS responses/audio are not stored there.
+- A verdict correction uploads no new image and is not analyzer training. Its
+  neutral acknowledgement is a separate text request containing the
+  correction labels and complete session context; log and persist that prompt
+  and successful response normally. OpenAI TTS may then upload only the
+  generated utterance text, while pyttsx3 keeps synthesis/playback local.
 - Keep capture, exchange, session, and state artifacts under `results/`.
 - Screen images and a camera-index-0 frame when its read succeeds are sensitive
   and are uploaded to OpenAI for vision requests. The code does not set
@@ -337,7 +372,11 @@ For every change:
    run `uv run python main.py --smoke`; it covers only the single-capture
    productivity branch. For rolling-comparison changes, also exercise at least
    two same-context captures and inspect the second request. For UI/state
-   changes, also exercise the relevant Flask flow or full local app.
+   changes, also exercise the relevant Flask flow or full local app. For
+   verdict corrections, cover reverse, restore, duplicate, stale revision,
+   BREAK-completion streak invalidation, JSONL retry, neutral acknowledgement,
+   and suppression of in-flight original speech; use
+   `docs/verdict-corrections.md` for the manual contract.
    For server/launcher changes, run
    `uv run python main.py --dry-hosts --open-browser` with an available
    nondefault `UI_PORT`; verify one first-load tab without refresh and inspect

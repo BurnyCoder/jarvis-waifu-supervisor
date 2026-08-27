@@ -4,8 +4,9 @@ Deep Work is a personal Windows 11 focus app. During a focused session it
 blocks configured website domains through the Windows hosts file, terminates
 named distraction apps, periodically captures every monitor plus camera index
 `0` when readable, asks an OpenAI vision model for a structured productivity
-verdict, and speaks feedback. A local Flask dashboard controls the session and
-shows current state and scheduler health.
+verdict, and speaks feedback. A local Flask dashboard controls the session,
+shows current state and scheduler health, and lets the user correct the newest
+productivity verdict without discarding the model's original judgment.
 
 <img width="898" height="1227" alt="image" src="https://github.com/user-attachments/assets/7355ca74-aafb-471e-a6ac-ad3cd8f7cd34" />
 
@@ -142,10 +143,16 @@ the AI can be wrong, and anyone with administrator access can undo the policy.
      supported, the model praises the engagement or focus instead. An off-track
      verdict or 30-minute streak milestone first uses the text model to generate
      a context-grounded nudge or richer praise.
+   - Correcting the newest verdict queues one neutral, AI-written confirmation
+     only after its append-only audit event is durable. It does not rerun the
+     analyzer or reinterpret the capture. A correction accepted while the
+     original feedback is still being generated suppresses that stale original
+     utterance before speech.
    - At the default cadence, each productive verdict credits five streak
      minutes. Six consecutive productive verdicts trigger praise and reset the
-     streak counter. This is configured-interval accounting, not measured
-     foreground activity time.
+     streak counter. A latest-verdict correction re-folds that credited interval
+     when its streak segment is still current. This is configured-interval
+     accounting, not measured foreground activity time.
    - OFF, BREAK, and agent-busy states pause new periodic evaluations. They do
      not cancel speech that was already queued.
    - `TTS_ENGINE=openai` uses the Speech API; `TTS_ENGINE=pyttsx3` changes only
@@ -239,6 +246,11 @@ the AI can be wrong, and anyone with administrator access can undo the policy.
      agent state, desired enforcement counts and reconciliation state,
      current-session verdict history, and the cadence/result/error state of all
      scheduler loops.
+   - Only the latest verdict has a reversible productive/off-track correction.
+     The effective label drives history totals and eligible streak accounting,
+     while the original model label, explanation, and observation remain
+     visible. See [`docs/verdict-corrections.md`](docs/verdict-corrections.md)
+     for the complete UI, HTTP, accounting, audit, and privacy contract.
 
 10. **Local artifacts and logs**
    - `results/captures/*.jpg`: stitched productivity and agent-watch captures.
@@ -246,7 +258,8 @@ the AI can be wrong, and anyone with administrator access can undo the policy.
      objects and textual prompts. Image request payloads refer to the separately
      stored JPEG paths instead of duplicating base64 data. TTS audio/responses
      and failed API calls are not stored here.
-   - `results/sessions/*.jsonl`: serialized timestamped session events;
+   - `results/sessions/*.jsonl`: serialized timestamped session events,
+     including append-only source verdicts and manual verdict corrections;
      transient failed lines remain queued in memory for retry.
    - `results/state.json`: daily social usage and previous topics only; these
      are the only fields reloaded into live state after restart.
@@ -274,7 +287,7 @@ flowchart TD
 
     UI -- "repeated allowed_groups checkboxes" --> Policy
     Policy -- "canonical, ordered groups" --> State
-    UI -- "start · start/stop goal access · start/stop break · agentic · disable" --> State
+    UI -- "start · access · break · agentic · latest-verdict correction · disable" --> State
     UI -- "canonical grant events" --> Store
     UI --> GoalFeedback["pending + policy-approved + ready FIFO<br/>transition feedback"]
     UI --> Reconcile["locked policy reconciliation<br/>retry remains pending on failure"]
@@ -302,6 +315,9 @@ flowchart TD
     ContextGate -- "yes: atomic record" --> State
     ContextGate -- "no: discard" --> Stale["context_changed<br/>reset next tick"]
     State --> Feedback["affirming direct reason<br/>or generated nudge/milestone praise"]
+    UI -- "POST correction: effective label + append-only event" --> Store
+    State --> CorrectionFeedback["durability-gated neutral<br/>correction acknowledgement"]
+    CorrectionFeedback --> TransitionVoice
     Feedback --> Speech["single SpeechQueue worker"]
     TransitionVoice --> Speech
     Speech --> TTS["OpenAI Speech API or pyttsx3"]
@@ -460,13 +476,16 @@ For a normal run:
    OS browser request fails.
 3. Enter a topic, choose only task-required website/app groups, optionally
    enable agentic mode, and select **Start session**.
-4. When a blocked website or app becomes necessary, enter a concrete goal,
+4. If the newest productivity evaluation is wrong, select **Actually
+   productive** or **Actually off track** on its history card. The same card
+   can later restore the model verdict; older evaluations are read-only.
+5. When a blocked website or app becomes necessary, enter a concrete goal,
    select its access groups, choose a timer or session-end duration, and start
    temporary access. Select **Goal complete — stop access** when finished;
    another grant can then start immediately.
-5. Start a timed break when needed. An active goal grant is suspended while
+6. Start a timed break when needed. An active goal grant is suspended while
    the break runs and resumes only if its wall-clock timer has not expired.
-6. Use Ctrl+C for a normal shutdown so the registered cleanup can clear the
+7. Use Ctrl+C for a normal shutdown so the registered cleanup can clear the
    hosts section. Do not assume that closing or killing the console will run
    cleanup; shutdown also gives transition generation only a bounded wait and
    does not guarantee that all queued speech finishes.
@@ -476,7 +495,8 @@ The app uses Werkzeug's threaded development server, explicitly bound to
 network without adding production serving, authentication, and request
 protections; both [Werkzeug](https://werkzeug.palletsprojects.com/en/stable/serving/)
 and [Flask](https://flask.palletsprojects.com/server/) describe this server as
-development-only.
+development-only. Loopback binding does not prevent an untrusted webpage or
+local process from attempting a form POST, including a verdict correction.
 
 ### Double-click launcher
 
@@ -494,6 +514,9 @@ Productivity history is scoped to the current in-memory session:
 
 - Every completed evaluation appears newest-first with its timestamp,
   productive/off-track label, complete reason, and expandable observation.
+- Only the latest card exposes a reversible correction. Its effective label
+  drives the dashboard and accounting; an active override keeps the immutable
+  model label and explanation visibly identified.
 - BREAK and OFF preserve the last session's timeline for review.
 - Starting another session clears the timeline and latest verdict.
 - Restarting the Python process clears dashboard verdict history; durable
@@ -510,6 +533,16 @@ Invoke-RestMethod "http://127.0.0.1:$port/status"
 
 The dashboard renders LLM text with `textContent` and does not expose saved
 capture images or raw prompt files through an HTTP route.
+
+Verdict entries add `verdict_id`, immutable `model_productive`, effective
+`productive`, `credited_minutes`, `correction_revision`, and `corrected_at` to
+their existing timestamp, reason, and observation. `POST /verdict/correct`
+accepts the displayed ID, revision, and explicit desired boolean; malformed
+forms return 400, stale conflicts return 409, and an immediate retry of the
+successful request is an idempotent redirect with no duplicate event or speech.
+An older same-label payload after later correction changes is stale. The full
+wire shape, break-boundary streak rules, and audit schema are documented in
+[`docs/verdict-corrections.md`](docs/verdict-corrections.md).
 
 Access data is additive in `/status`: `work_access`, `goal_access`, and `break`
 publish canonical `allowed_groups` plus `allowed_group_labels`, while retaining
@@ -654,6 +687,9 @@ and shutdown clear an active break without a refund or `break_stopped` event.
   groups are recorded in local events but are not sent with a productivity
   capture. An agent-watch request uploads one stitched JPEG with its activity
   prompt. Separate text-feedback calls send their complete contextual prompts.
+  A verdict correction sends no new image, but its neutral acknowledgement is
+  another text-feedback request containing the correction labels and full
+  session context.
   Analyzer prompt/exchange artifacts contain human-readable group labels;
   canonical keys and labels remain complete in status/events.
 - `TTS_ENGINE=openai` sends each queued utterance text to the Speech API,
@@ -685,8 +721,10 @@ and shutdown clear an active break without a refund or `break_stopped` event.
   add a text-generation request. Session start, break start, and manual break
   stop each normally add one text-generation request plus an utterance.
   Goal-access start/manual stop/expiry and agent-state transitions do the same;
-  agentic polling also adds vision requests. Utterances become paid Speech API
-  calls only with `TTS_ENGINE=openai`; downstream failures can prevent calls.
+  each changed verdict correction adds one text-generation request and
+  utterance after its JSONL event becomes durable, while agentic polling also
+  adds vision requests. Utterances become paid Speech API calls only with
+  `TTS_ENGINE=openai`; downstream failures can prevent calls.
 - Productivity images use `detail="original"` while agent-watch images use
   `detail="low"`. OpenAI documents that GPT-5.6 preserves the dimensions of the
   supplied image at original detail, but here the supplied image is the
@@ -781,6 +819,15 @@ access, an API call, capture hardware, or audio playback.
 14. With a fake blocker that fails once, verify the mutating route returns 503,
     `/status.enforcement.reconciliation_pending` becomes true, and a later
     enforcer tick writes only the newest desired policy and clears the flag.
+15. Correct the newest verdict in both directions and restore its model label.
+    Confirm `/status` keeps the immutable model label beside the effective one,
+    dashboard totals and eligible streak accounting follow the effective label,
+    and each real change appends one `verdict_corrected` event before its neutral
+    acknowledgement. Repeat the same desired POST and confirm it is idempotent;
+    submit an older ID/revision after a newer verdict and confirm HTTP 409. End a
+    break before correcting its retained verdict and confirm history changes but
+    the ended pre-break streak stays at zero. See the focused checklist in
+    [`docs/verdict-corrections.md`](docs/verdict-corrections.md).
 
 ## Known limitations
 

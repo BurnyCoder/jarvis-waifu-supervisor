@@ -12,6 +12,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
 # Config owns the domain/app tables; state only computes "effective" views.
 from deepwork.config import (
@@ -80,9 +81,73 @@ class GoalAccessFeedbackRequest:
     kind: str                                      # MessageGenerator template key
     context: tuple[tuple[str, object], ...]         # frozen keyword arguments
     policy_revision: int                           # desired hosts-policy identity
+    # Verdict corrections have no hosts-policy claim, so they bypass policy
+    # approval while still waiting for earlier JSONL records to become durable.
+    waits_for_policy: bool = True
     grant: GoalAccessInfo | None = None             # goal-start cancellation ID
     waits_for_goal_open: bool = False               # BREAK cannot publish start
     accepts_later_policy: bool = False              # truthful after supersession
+
+
+@dataclass(frozen=True)
+class VerdictCorrectionResult:
+    """Immutable outcome returned to the correction HTTP boundary."""
+
+    changed: bool                                  # False makes retry a no-op
+    verdict_id: str                                # stable analyzer-result identity
+    evaluated_at: datetime                         # original evaluation instant
+    model_productive: bool                         # immutable vision classification
+    from_productive: bool                          # effective label before request
+    to_productive: bool                            # requested effective label
+    credited_minutes: int                          # interval represented by verdict
+    correction_revision: int                       # post-request optimistic version
+    changed_at: datetime | None                    # None for idempotent duplicate
+    streak_adjusted: bool                          # False after a later streak reset
+    productive_streak_min: int                     # effective current remainder
+    restored_model_verdict: bool                   # override now equals model again
+
+
+@dataclass(frozen=True)
+class _LatestVerdictAccounting:
+    """Private inputs needed to replay only the current streak's last verdict."""
+
+    verdict_id: str                                # exact latest verdict identity
+    streak_before_min: int                         # accumulator before that verdict
+    credited_minutes: int                          # configured newest-interval credit
+
+
+def new_verdict_id() -> str:
+    """Return one collision-resistant UUID for state, events, and telemetry."""
+
+    # UUID4 is generated from the platform's cryptographic randomness source:
+    # https://docs.python.org/3/library/uuid.html#uuid.uuid4
+    return str(uuid4())
+
+
+def _canonical_verdict_id(verdict_id: str) -> str:
+    """Validate and normalize an untrusted UUID string at the state boundary."""
+
+    if not isinstance(verdict_id, str) or not verdict_id:
+        raise ValueError("Verdict ID must be a UUID string.")
+    try:
+        return str(UUID(verdict_id))
+    except ValueError as exc:
+        raise ValueError("Verdict ID must be a valid UUID.") from exc
+
+
+def _fold_productive_streak(
+    streak_before_min: int,
+    productive: bool,
+    credited_minutes: int,
+) -> tuple[int, str | None]:
+    """Apply the canonical nudge/praise accounting to one verdict interval."""
+
+    if not productive:
+        return 0, "nudge"
+    advanced_streak = streak_before_min + credited_minutes
+    if advanced_streak >= 30:
+        return 0, "praise"
+    return advanced_streak, None
 
 
 def goal_access_event(
@@ -202,6 +267,9 @@ class SessionState:
         self._ready_goal_access_feedback: list[
             GoalAccessFeedbackRequest
         ] = []
+        # This private snapshot is sufficient to replay the latest verdict
+        # exactly, but is invalidated once a completed break starts a new streak.
+        self._latest_verdict_accounting: _LatestVerdictAccounting | None = None
 
     @contextmanager
     def goal_access_lifecycle(self):
@@ -216,10 +284,16 @@ class SessionState:
         self,
         request: GoalAccessFeedbackRequest,
     ) -> None:
-        """Retain ordered feedback until the desired hosts policy is applied."""
+        """Retain feedback behind its policy and/or event-durability gates."""
 
         with self._lock:
-            self._pending_goal_access_feedback.append(request)
+            if request.waits_for_policy:
+                self._pending_goal_access_feedback.append(request)
+            else:
+                # A correction acknowledgment makes no enforcement claim. Put
+                # it after the policy gate immediately, but keep it out of the
+                # delivery-ready queue until the route confirms JSONL durability.
+                self._enforced_goal_access_feedback.append(request)
 
     @property
     def feedback_policy_revision(self) -> int:
@@ -390,6 +464,7 @@ class SessionState:
             # history; OFF and BREAK deliberately keep the prior entries.
             self.last_verdict = None
             self.evaluation_history.clear()
+            self._latest_verdict_accounting = None
             self.current_break = None
             self.goal_access = None
             self.active_project = project_name
@@ -593,6 +668,9 @@ class SessionState:
         self.current_break = None                  # remove temporary exceptions
         self.mode = Mode.ON                        # resume the active session
         self.productive_streak_min = 0             # restart post-break streak
+        # The last visible verdict remains correctable as history, but it no
+        # longer contributes to the newly started post-break streak.
+        self._latest_verdict_accounting = None
         self._mark_policy_changed(previous_hosts_policy)
 
     def end_break_if_due(self, now: datetime | None = None) -> bool:
@@ -842,9 +920,15 @@ class SessionState:
             # Return copies so a prompt builder cannot mutate shared state.
             return [dict(item) for item in self.evaluation_history[-5:]]
 
-    def record_verdict(self, productive: bool, minutes: int,
-                       observed: str = "", reason: str = "",
-                       now: datetime | None = None) -> str | None:
+    def record_verdict(
+        self,
+        productive: bool,
+        minutes: int,
+        observed: str = "",
+        reason: str = "",
+        now: datetime | None = None,
+        verdict_id: str | None = None,
+    ) -> str | None:
         """Fold one analyzer verdict into the streak; return 'praise'/'nudge'/None.
 
         Requirement 4: nudge whenever unproductive; praise once per 30
@@ -852,28 +936,40 @@ class SessionState:
         session earns praise again every 30 min). Every verdict also joins
         the current-session evaluation history for dashboard and TTS grounding.
         """
+        identity = (
+            _canonical_verdict_id(verdict_id)
+            if verdict_id is not None
+            else new_verdict_id()
+        )
         with self._lock:
             timestamp = now or datetime.now()
-            outcome = None
-            if not productive:
-                self.productive_streak_min = 0
-                outcome = "nudge"
-            else:
-                self.productive_streak_min += minutes
-                if self.productive_streak_min >= 30:
-                    self.productive_streak_min = 0
-                    outcome = "praise"
+            streak_before_min = self.productive_streak_min
+            self.productive_streak_min, outcome = _fold_productive_streak(
+                streak_before_min,
+                productive,
+                minutes,
+            )
 
             # One canonical entry powers last_verdict, full UI history and the
             # bounded TTS slice, preventing timestamp/content drift.
             entry = {
+                "verdict_id": identity,
                 "ts": timestamp.isoformat(),
+                "model_productive": productive,
                 "productive": productive,
+                "credited_minutes": minutes,
+                "correction_revision": 0,
+                "corrected_at": None,
                 "reason": reason,
                 "observed": observed,
             }
             self.evaluation_history.append(entry)
             self.last_verdict = dict(entry)
+            self._latest_verdict_accounting = _LatestVerdictAccounting(
+                verdict_id=identity,
+                streak_before_min=streak_before_min,
+                credited_minutes=minutes,
+            )
             return outcome
 
     def record_verdict_if_context(
@@ -884,6 +980,7 @@ class SessionState:
         observed: str = "",
         reason: str = "",
         now: datetime | None = None,
+        verdict_id: str | None = None,
     ) -> tuple[bool, str | None]:
         """Record only if monitoring still uses the caller's exact revision."""
 
@@ -899,15 +996,139 @@ class SessionState:
                 observed=observed,
                 reason=reason,
                 now=now,
+                verdict_id=verdict_id,
             )
             return True, outcome
+
+    def correct_latest_verdict(
+        self,
+        verdict_id: str,
+        expected_revision: int,
+        productive: bool,
+        now: datetime | None = None,
+    ) -> VerdictCorrectionResult | None:
+        """Atomically replace the latest effective label or reject stale input.
+
+        Returning ``None`` gives the HTTP layer one conflict result for a
+        replaced verdict and an out-of-date correction revision. Repeating an
+        already-applied desired value is an idempotent successful no-op.
+        """
+
+        identity = _canonical_verdict_id(verdict_id)
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 0
+        ):
+            raise ValueError("Correction revision must be a non-negative integer.")
+        if not isinstance(productive, bool):
+            raise ValueError("Corrected productivity must be true or false.")
+        changed_at = now or datetime.now()
+        with self._lock:
+            if not self.evaluation_history:
+                return None
+            entry = self.evaluation_history[-1]
+            if entry["verdict_id"] != identity:
+                return None
+
+            current_productive = entry["productive"]
+            current_revision = entry["correction_revision"]
+            evaluated_at = datetime.fromisoformat(entry["ts"])
+            if current_productive is productive:
+                # A genuine retry either carries the current revision (a
+                # no-op command) or the immediately preceding revision whose
+                # one successful toggle produced this exact desired label.
+                # Older same-label requests have crossed an ABA cycle and
+                # must conflict instead of silently masking stale UI state.
+                if expected_revision not in {
+                    current_revision,
+                    current_revision - 1,
+                }:
+                    return None
+                return VerdictCorrectionResult(
+                    changed=False,
+                    verdict_id=identity,
+                    evaluated_at=evaluated_at,
+                    model_productive=entry["model_productive"],
+                    from_productive=current_productive,
+                    to_productive=productive,
+                    credited_minutes=entry["credited_minutes"],
+                    correction_revision=current_revision,
+                    changed_at=None,
+                    streak_adjusted=False,
+                    productive_streak_min=self.productive_streak_min,
+                    restored_model_verdict=(
+                        productive is entry["model_productive"]
+                    ),
+                )
+            if current_revision != expected_revision:
+                return None
+
+            accounting = self._latest_verdict_accounting
+            streak_adjusted = (
+                accounting is not None
+                and accounting.verdict_id == identity
+            )
+            if streak_adjusted:
+                # The correction has its own neutral acknowledgment; discard
+                # the canonical fold's nudge/praise outcome while preserving
+                # exactly the same numeric rollover behavior.
+                self.productive_streak_min, _ = _fold_productive_streak(
+                    accounting.streak_before_min,
+                    productive,
+                    accounting.credited_minutes,
+                )
+
+            next_revision = current_revision + 1
+            entry["productive"] = productive
+            entry["correction_revision"] = next_revision
+            entry["corrected_at"] = (
+                None
+                if productive is entry["model_productive"]
+                else changed_at.isoformat()
+            )
+            self.last_verdict = dict(entry)
+            return VerdictCorrectionResult(
+                changed=True,
+                verdict_id=identity,
+                evaluated_at=evaluated_at,
+                model_productive=entry["model_productive"],
+                from_productive=current_productive,
+                to_productive=productive,
+                credited_minutes=entry["credited_minutes"],
+                correction_revision=next_revision,
+                changed_at=changed_at,
+                streak_adjusted=streak_adjusted,
+                productive_streak_min=self.productive_streak_min,
+                restored_model_verdict=(productive is entry["model_productive"]),
+            )
+
+    def verdict_matches(
+        self,
+        verdict_id: str,
+        productive: bool,
+        correction_revision: int,
+    ) -> bool:
+        """Return whether feedback still describes the unchanged latest verdict."""
+
+        with self._lock:
+            return bool(
+                self.last_verdict
+                and self.last_verdict["verdict_id"] == verdict_id
+                and self.last_verdict["productive"] is productive
+                and self.last_verdict["correction_revision"]
+                == correction_revision
+            )
 
     def context_summary(self, now: datetime | None = None) -> str:
         """One multi-line snapshot of the whole session — handed to every TTS
         message prompt so spoken feedback can reference real specifics."""
         now = now or datetime.now()
         with self._lock:
-            minutes_in = int((now - self.session_start).total_seconds() // 60) \
+            # OFF keeps the finished session available for verdict review, so
+            # later correction acknowledgements must not imply it kept running.
+            elapsed_until = self.session_end or now
+            minutes_in = int((elapsed_until - self.session_start).total_seconds() // 60) \
                 if self.session_start else 0
             lines = [
                 f"topic: {self.topic or '(none)'}",

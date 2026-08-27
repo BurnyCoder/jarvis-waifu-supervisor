@@ -6,9 +6,10 @@
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 # Flask quickstart: https://flask.palletsprojects.com/en/stable/quickstart/
-from flask import Flask, jsonify, redirect, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from deepwork.access_policy import (
     access_app_keys,
@@ -76,6 +77,37 @@ def _parse_goal_access_form(form) -> tuple[str, tuple[str, ...], int | None]:
     if not 1 <= minutes <= 240:
         raise ValueError("Timed access must be between 1 and 240 minutes.")
     return goal, allowed_groups, minutes
+
+
+def _parse_verdict_correction_form(form) -> tuple[str, int, bool]:
+    """Validate the optimistic latest-verdict correction command."""
+
+    verdict_id = form.get("verdict_id", "").strip()
+    if not verdict_id:
+        raise ValueError("A verdict ID is required.")
+    try:
+        verdict_id = str(UUID(verdict_id))
+    except ValueError as exc:
+        raise ValueError("Verdict ID must be a valid UUID.") from exc
+
+    raw_revision = form.get("expected_revision", "").strip()
+    try:
+        expected_revision = int(raw_revision)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("The correction revision must be a whole number.") from exc
+    if expected_revision < 0:
+        raise ValueError("The correction revision cannot be negative.")
+
+    raw_productive = form.get("productive", "")
+    if raw_productive not in {"true", "false"}:
+        raise ValueError("Productive must be exactly true or false.")
+    return verdict_id, expected_revision, raw_productive == "true"
+
+
+def _verdict_label(productive: bool) -> str:
+    """Return the same human label used by the dashboard verdict badge."""
+
+    return "productive" if productive else "off track"
 
 
 def create_app(
@@ -460,6 +492,108 @@ def create_app(
                 return enforcement_error
         goal_feedback.wake()
         return redirect("/")
+
+    @app.post("/verdict/correct")
+    def correct_verdict():
+        """Replace only the effective label of the expected latest verdict."""
+
+        try:
+            verdict_id, expected_revision, productive = (
+                _parse_verdict_correction_form(request.form)
+            )
+        except ValueError as exc:
+            log.warning("verdict correction refused: %s", exc)
+            return str(exc), 400
+
+        # The lifecycle coordinator orders the source verdict event before its
+        # correction and prevents a session transition from splitting the
+        # state/event/feedback publication sequence.
+        with state.goal_access_lifecycle():
+            changed_at = get_now()
+            result = state.correct_latest_verdict(
+                verdict_id,
+                expected_revision,
+                productive,
+                now=changed_at,
+            )
+            if result is None:
+                # RFC 9110 section 15.5.10 defines 409 for a command that no
+                # longer matches the target resource's current state:
+                # https://www.rfc-editor.org/rfc/rfc9110.html#name-409-conflict
+                log.info(
+                    "verdict correction conflicted: verdict_id=%r "
+                    "expected_revision=%d productive=%s",
+                    verdict_id,
+                    expected_revision,
+                    productive,
+                )
+                return (
+                    "The latest verdict changed. Refresh the dashboard and "
+                    "try again.",
+                    409,
+                )
+            if not result.changed:
+                # Retried POSTs that already reached their explicit desired
+                # state are successful without duplicate events or speech.
+                log.info(
+                    "verdict correction already applied: verdict_id=%s "
+                    "productive=%s",
+                    result.verdict_id,
+                    result.to_productive,
+                )
+                return redirect("/")
+
+            append_session_event({
+                "event": "verdict_corrected",
+                "verdict_id": result.verdict_id,
+                "evaluated_at": result.evaluated_at.isoformat(),
+                "model_productive": result.model_productive,
+                "from_productive": result.from_productive,
+                "to_productive": result.to_productive,
+                "credited_minutes": result.credited_minutes,
+                "correction_revision": result.correction_revision,
+                "changed_at": result.changed_at.isoformat(),
+                "restored_model_verdict": result.restored_model_verdict,
+                "streak_adjusted": result.streak_adjusted,
+                "productive_streak_min": result.productive_streak_min,
+            }, "verdict-correction")
+            correction_action = (
+                "restored the monitor's original verdict"
+                if result.restored_model_verdict
+                else "corrected the monitor"
+            )
+            queue_transition_feedback(
+                state,
+                "verdict_correction",
+                waits_for_policy=False,
+                correction_action=correction_action,
+                from_label=_verdict_label(result.from_productive),
+                to_label=_verdict_label(result.to_productive),
+                session_context=state.context_summary(now=changed_at),
+            )
+            # Policy-independent feedback is already approved, but every
+            # matching utterance still waits until prior JSONL events are
+            # durable. The enforcer retry path releases it after recovery.
+            if not getattr(store, "session_events_pending", False):
+                state.release_goal_access_feedback()
+        goal_feedback.wake()
+        log.info(
+            "verdict corrected: verdict_id=%s from=%s to=%s revision=%d "
+            "streak_adjusted=%s productive_streak_min=%d",
+            result.verdict_id,
+            result.from_productive,
+            result.to_productive,
+            result.correction_revision,
+            result.streak_adjusted,
+            result.productive_streak_min,
+        )
+        # Carry the accepted identity/revision across the POST/redirect so the
+        # freshly loaded page can announce this same-tab change exactly once.
+        return redirect(url_for(
+            "index",
+            verdict_corrected=result.verdict_id,
+            correction_revision=result.correction_revision,
+        ))
 
     @app.post("/disable")
     def disable():

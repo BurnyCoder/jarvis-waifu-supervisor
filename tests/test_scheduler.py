@@ -6,6 +6,7 @@ import json
 import threading
 import time
 from datetime import datetime, timedelta
+from uuid import UUID
 
 import pytest
 from PIL import Image
@@ -381,6 +382,137 @@ def test_capture_verdict_nudge_flows_to_speech(tmp_path):
     assert kind == "nudge"
     assert kwargs["observed"] == "YouTube fullscreen on monitor 1"
     assert "thesis" in kwargs["session_context"]
+
+
+def test_monitor_links_verdict_identity_across_state_event_and_result(tmp_path):
+    """One UUID links the accepted model result to both durable and runtime views."""
+
+    verdict = ProductivityVerdict(
+        productive=False,
+        reason="watching videos",
+        observed="YouTube fullscreen on monitor 1",
+    )
+    sched, state, _ = make_scheduler(tmp_path, verdict=verdict)
+    sched.now_fn = lambda: T0
+    state.start_session("thesis", now=T0 - timedelta(minutes=5))
+
+    result = sched._monitor_tick()
+
+    entry = state.last_verdict
+    assert entry is not None
+    assert str(UUID(entry["verdict_id"])) == entry["verdict_id"]
+    event_file = next((tmp_path / "sessions").glob("*.jsonl"))
+    event = json.loads(event_file.read_text(encoding="utf-8"))
+    assert event["event"] == "verdict"
+    assert event["verdict_id"] == entry["verdict_id"] == result["verdict_id"]
+    assert event["evaluated_at"] == entry["ts"] == result["verdict_ts"]
+    assert event["model_productive"] is False
+    assert event["productive"] is False
+    assert event["credited_minutes"] == entry["credited_minutes"]
+    assert result["model_status"] == "unproductive"
+
+
+def test_monitor_holds_lifecycle_through_verdict_event_append(tmp_path):
+    """A correction/transition cannot overtake its source verdict JSONL event."""
+
+    verdict = ProductivityVerdict(
+        productive=True,
+        reason="draft advanced",
+        observed="new paragraph visible",
+    )
+    sched, state, _ = make_scheduler(tmp_path, verdict=verdict)
+    state.start_session("write", now=T0)
+    append_started = threading.Event()
+    release_append = threading.Event()
+    lifecycle_acquired = threading.Event()
+    original_append = sched.store.append_session_event
+
+    def blocking_append(event):
+        append_started.set()
+        assert release_append.wait(timeout=3)
+        original_append(event)
+
+    sched.store.append_session_event = blocking_append
+    monitor = threading.Thread(target=sched._monitor_tick)
+    monitor.start()
+    assert append_started.wait(timeout=3)
+
+    def acquire_lifecycle():
+        with state.goal_access_lifecycle():
+            lifecycle_acquired.set()
+
+    contender = threading.Thread(target=acquire_lifecycle)
+    contender.start()
+    assert not lifecycle_acquired.wait(timeout=0.05)
+    release_append.set()
+    monitor.join(timeout=3)
+    contender.join(timeout=3)
+
+    assert not monitor.is_alive()
+    assert not contender.is_alive()
+    assert lifecycle_acquired.is_set()
+
+
+@pytest.mark.parametrize(
+    ("model_productive", "expected_kind"),
+    ((False, "nudge"), (True, "praise")),
+)
+def test_monitor_suppresses_original_speech_after_in_flight_correction(
+    tmp_path,
+    model_productive,
+    expected_kind,
+):
+    """A user override during nudge or praise generation cancels stale speech."""
+
+    verdict = ProductivityVerdict(
+        productive=model_productive,
+        reason="the model supplied its original judgment",
+        observed="the captured work state remained available for audit",
+    )
+    sched, state, _ = make_scheduler(tmp_path, verdict=verdict)
+    state.start_session("write", now=T0)
+    # A productive result reaches the existing 30-minute boundary so it takes
+    # the generated-praise branch; an off-track result naturally takes nudge.
+    if model_productive:
+        sched.verdict_minutes = 5
+        state.productive_streak_min = 25
+    generation_started = threading.Event()
+    release_generation = threading.Event()
+
+    def blocking_generate(kind, **context):
+        sched.messages.calls.append((kind, context))
+        generation_started.set()
+        assert release_generation.wait(timeout=3)
+        return "<nudge>"
+
+    sched.messages.generate = blocking_generate
+    result = {}
+
+    def run_monitor():
+        result.update(sched._monitor_tick())
+
+    monitor = threading.Thread(target=run_monitor)
+    monitor.start()
+    assert generation_started.wait(timeout=3)
+    assert sched.messages.calls[-1][0] == expected_kind
+    target = dict(state.last_verdict)
+    with state.goal_access_lifecycle():
+        corrected = state.correct_latest_verdict(
+            target["verdict_id"],
+            expected_revision=0,
+            productive=not model_productive,
+            now=T0 + timedelta(minutes=1),
+        )
+    assert corrected is not None and corrected.changed is True
+    release_generation.set()
+    monitor.join(timeout=3)
+
+    assert not monitor.is_alive()
+    assert result["model_status"] == (
+        "productive" if model_productive else "unproductive"
+    )
+    assert state.last_verdict["productive"] is not model_productive
+    assert sched.speech.spoken == []
 
 
 def test_monitor_forwards_task_allowed_groups_to_vision_and_message_context(

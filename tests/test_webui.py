@@ -6,6 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -1741,6 +1742,272 @@ def test_status_returns_current_session_history_newest_first(ui):
         "first",
     ]
     assert data["last_verdict"]["observed"] == "video open"
+
+
+def test_latest_verdict_correction_is_audited_spoken_and_reversible(tmp_path):
+    """One explicit correction updates effective accounting without a new check."""
+
+    clock = {"now": datetime(2026, 7, 20, 9, 5, 0)}
+    messages = FakeMessages()
+    client, state, blocker, speech = make_ui(
+        tmp_path,
+        now_fn=lambda: clock["now"],
+        messages=messages,
+    )
+    client.post("/start", data={"topic": "write thesis"})
+    state.record_verdict(
+        False,
+        5,
+        reason="The document looked unchanged.",
+        observed="A thesis document was open.",
+        now=clock["now"],
+    )
+    original = dict(state.last_verdict)
+    applied_policies = len(blocker.applied)
+
+    clock["now"] += timedelta(seconds=10)
+    corrected = client.post("/verdict/correct", data={
+        "verdict_id": original["verdict_id"],
+        "expected_revision": "0",
+        "productive": "true",
+    })
+
+    assert corrected.status_code == 302
+    assert f"verdict_corrected={original['verdict_id']}" in corrected.location
+    assert "correction_revision=1" in corrected.location
+    latest = state.last_verdict
+    assert latest["productive"] is True
+    assert latest["model_productive"] is False
+    assert latest["correction_revision"] == 1
+    assert latest["corrected_at"] == clock["now"].isoformat()
+    assert latest["reason"] == original["reason"]
+    assert len(state.evaluation_history) == 1
+    assert state.productive_streak_min == 5
+    assert len(blocker.applied) == applied_policies
+    event = session_events(client)[-1]
+    assert event["event"] == "verdict_corrected"
+    assert event["verdict_id"] == original["verdict_id"]
+    assert event["model_productive"] is False
+    assert event["from_productive"] is False
+    assert event["to_productive"] is True
+    assert event["correction_revision"] == 1
+    assert event["productive_streak_min"] == 5
+    assert event["streak_adjusted"] is True
+    assert messages.calls[-1][0] == "verdict_correction"
+    assert speech.spoken[-1] == "<verdict_correction>"
+
+    clock["now"] += timedelta(seconds=10)
+    restored = client.post("/verdict/correct", data={
+        "verdict_id": original["verdict_id"],
+        "expected_revision": "1",
+        "productive": "false",
+    })
+
+    assert restored.status_code == 302
+    assert f"verdict_corrected={original['verdict_id']}" in restored.location
+    assert "correction_revision=2" in restored.location
+    latest = state.last_verdict
+    assert latest["productive"] is False
+    assert latest["model_productive"] is False
+    assert latest["correction_revision"] == 2
+    assert latest["corrected_at"] is None
+    assert state.productive_streak_min == 0
+    assert [event["event"] for event in session_events(client)[-2:]] == [
+        "verdict_corrected",
+        "verdict_corrected",
+    ]
+    assert [call[0] for call in messages.calls].count("verdict_correction") == 2
+    assert speech.spoken[-1] == "<verdict_correction>"
+
+
+def test_verdict_correction_validates_staleness_revision_and_duplicates(tmp_path):
+    """Explicit desired state is idempotent and stale multi-tab writes conflict."""
+
+    messages = FakeMessages()
+    client, state, _, speech = make_ui(tmp_path, messages=messages)
+    client.post("/start", data={"topic": "research"})
+
+    assert client.post("/verdict/correct", data={
+        "verdict_id": str(uuid4()),
+        "expected_revision": "0",
+        "productive": "true",
+    }).status_code == 409
+
+    state.record_verdict(False, 5, reason="model result")
+    verdict_id = state.last_verdict["verdict_id"]
+    for malformed in (
+        {"expected_revision": "0", "productive": "true"},
+        {"verdict_id": "not-a-uuid", "expected_revision": "0", "productive": "true"},
+        {"verdict_id": verdict_id, "expected_revision": "x", "productive": "true"},
+        {"verdict_id": verdict_id, "expected_revision": "-1", "productive": "true"},
+        {"verdict_id": verdict_id, "expected_revision": "0", "productive": "yes"},
+    ):
+        assert client.post("/verdict/correct", data=malformed).status_code == 400
+
+    first = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "0",
+        "productive": "true",
+    })
+    duplicate = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "0",
+        "productive": "true",
+    })
+    assert first.status_code == 302 and duplicate.status_code == 302
+    assert duplicate.location.endswith("/")
+    assert len([e for e in session_events(client) if e["event"] == "verdict_corrected"]) == 1
+    assert [call[0] for call in messages.calls].count("verdict_correction") == 1
+    assert speech.spoken.count("<verdict_correction>") == 1
+
+    assert client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "1",
+        "productive": "false",
+    }).status_code == 302
+    # An old tab cannot replay its pre-restore command after the ABA cycle.
+    stale_revision = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "0",
+        "productive": "true",
+    })
+    assert stale_revision.status_code == 409
+
+    assert client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "2",
+        "productive": "true",
+    }).status_code == 302
+    # Returning to the same label does not make a pre-ABA payload a duplicate.
+    stale_same_label = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "0",
+        "productive": "true",
+    })
+    assert stale_same_label.status_code == 409
+
+    state.record_verdict(False, 5, reason="newer result")
+    stale_latest = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "3",
+        "productive": "true",
+    })
+    assert stale_latest.status_code == 409
+
+
+def test_off_correction_acknowledgement_uses_frozen_session_duration(tmp_path):
+    """A later OFF-mode correction must not tell the model work kept running."""
+
+    clock = {"now": datetime(2026, 7, 20, 9, 0, 0)}
+    messages = FakeMessages()
+    client, state, _, _ = make_ui(
+        tmp_path,
+        now_fn=lambda: clock["now"],
+        messages=messages,
+    )
+    client.post("/start", data={"topic": "write thesis"})
+    state.record_verdict(False, 5, reason="model result", now=clock["now"])
+    target = dict(state.last_verdict)
+    clock["now"] += timedelta(minutes=10)
+    assert client.post("/disable", data={
+        "phrase": CONFIRMATION_PHRASE,
+    }).status_code == 302
+    clock["now"] += timedelta(minutes=50)
+
+    response = client.post("/verdict/correct", data={
+        "verdict_id": target["verdict_id"],
+        "expected_revision": "0",
+        "productive": "true",
+    })
+
+    assert response.status_code == 302
+    kind, context = messages.calls[-1]
+    assert kind == "verdict_correction"
+    assert "minutes into session: 10" in context["session_context"]
+
+
+def test_correction_feedback_waits_for_retryable_event_durability(tmp_path):
+    """The live correction survives I/O failure, while speech waits for JSONL."""
+
+    store = RetryableEventStore(tmp_path)
+    messages = FakeMessages()
+    client, state, blocker, speech = make_ui(
+        tmp_path,
+        store=store,
+        messages=messages,
+    )
+    client.post("/start", data={"topic": "research"})
+    state.record_verdict(False, 5, reason="model result")
+    latest = dict(state.last_verdict)
+    store.failures_remaining = 1
+
+    response = client.post("/verdict/correct", data={
+        "verdict_id": latest["verdict_id"],
+        "expected_revision": "0",
+        "productive": "true",
+    })
+
+    assert response.status_code == 302
+    assert state.last_verdict["productive"] is True
+    assert store.session_events_pending is True
+    assert speech.spoken == ["<good_luck>"]
+
+    scheduler = Scheduler(
+        state=state,
+        blocker=blocker,
+        store=store,
+        analyzer=object(),
+        messages=messages,
+        speech=speech,
+        capture_interval_s=300,
+        kill_interval_s=3,
+        kill_fn=lambda targets: [],
+    )
+    scheduler._enforcer_tick()
+
+    assert store.session_events_pending is False
+    assert session_events(client)[-1]["event"] == "verdict_corrected"
+    assert speech.spoken[-1] == "<verdict_correction>"
+
+
+def test_latest_verdict_remains_correctable_during_break_and_after_disable(tmp_path):
+    """Review modes preserve history while a completed break keeps streak reset."""
+
+    client, state, _, _ = make_ui(tmp_path)
+    client.post("/start", data={"topic": "research"})
+    state.record_verdict(False, 5, reason="model result")
+    verdict_id = state.last_verdict["verdict_id"]
+    assert client.post("/break", data={
+        "purpose": "walk",
+        "minutes": "5",
+        "kind": "away",
+    }).status_code == 302
+
+    during_break = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "0",
+        "productive": "true",
+    })
+    assert during_break.status_code == 302
+    assert state.mode is Mode.BREAK
+    assert state.productive_streak_min == 5
+
+    assert client.post("/break/stop").status_code == 302
+    assert state.mode is Mode.ON and state.productive_streak_min == 0
+    assert client.post("/disable", data={
+        "phrase": CONFIRMATION_PHRASE,
+    }).status_code == 302
+
+    after_disable = client.post("/verdict/correct", data={
+        "verdict_id": verdict_id,
+        "expected_revision": "1",
+        "productive": "false",
+    })
+    assert after_disable.status_code == 302
+    assert state.mode is Mode.OFF
+    assert state.last_verdict["productive"] is False
+    assert state.productive_streak_min == 0
+    assert session_events(client)[-1]["streak_adjusted"] is False
 
 
 def test_status_extends_break_with_countdown_and_allowances(ui):
