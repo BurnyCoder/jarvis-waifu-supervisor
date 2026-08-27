@@ -1,7 +1,8 @@
 /*
  * Realtime dashboard renderer.
- * Global context: Flask owns state transitions; this browser code only reads
- * /status, renders with textContent, and keeps countdowns smooth between polls.
+ * Global context: Flask owns state transitions; this browser code reads
+ * /status, builds native POST controls, renders with textContent, and keeps
+ * countdowns smooth between polls.
  * Fetch docs: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API
  */
 
@@ -15,13 +16,21 @@
     enforcer: "App and break enforcer",
     agent_watch: "AI agent watcher",
   };
+  const initialQuery = new URLSearchParams(window.location.search);
 
   let latestStatus = null;
   let fetchedAtMs = 0;
   let pollTimer = null;
   let requestInFlight = false;
   let renderedHistorySignature = "";
-  let latestAnnouncedVerdictTs = null;
+  let latestAnnouncedVerdictKey = null;
+  let latestAnnouncedVerdictId = null;
+  let redirectedCorrection = initialQuery.get("verdict_corrected")
+    ? {
+        verdictId: initialQuery.get("verdict_corrected"),
+        revision: initialQuery.get("correction_revision"),
+      }
+    : null;
   let hadActiveGoalAccess = false;
 
   const byId = (id) => document.getElementById(id);
@@ -77,6 +86,123 @@
     return String(value || "")
       .replaceAll("_", " ")
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function verdictLabel(productive) {
+    // Keep one user-facing vocabulary across badges, controls, metrics, and
+    // runtime telemetry; the scheduler's raw value is still "unproductive".
+    return productive ? "Productive" : "Off track";
+  }
+
+  function modelProductive(item) {
+    // A rolling upgrade may briefly surface a legacy entry without the new
+    // field, in which case its effective label is also its model label.
+    return typeof item?.model_productive === "boolean"
+      ? item.model_productive
+      : Boolean(item?.productive);
+  }
+
+  function correctionRevision(item) {
+    // The route validates this optimistic-concurrency token; normalizing only
+    // protects the rendered form from a malformed status payload.
+    const revision = Number(item?.correction_revision);
+    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+  }
+
+  function verdictIsCorrected(item) {
+    // `productive` is the effective user-facing result, while
+    // `model_productive` remains immutable audit context.
+    return Boolean(item?.productive) !== modelProductive(item);
+  }
+
+  function verdictIdentity(item) {
+    // The server-issued ID is authoritative. Timestamp fallback keeps live
+    // announcements sensible during a rolling local upgrade.
+    return String(item?.verdict_id || item?.ts || "");
+  }
+
+  function verdictAnnouncementKey(item) {
+    // Including the revision makes a correction to the same verdict visible
+    // to the live-region change detector without announcing every poll.
+    return [
+      verdictIdentity(item),
+      correctionRevision(item),
+      Boolean(item?.productive),
+    ].join(":");
+  }
+
+  function clearCorrectionAnnouncementQuery() {
+    // Consume the POST/redirect marker without another navigation, so reload
+    // never repeats the same live announcement:
+    // https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("verdict_corrected");
+    cleanUrl.searchParams.delete("correction_revision");
+    window.history.replaceState(
+      null,
+      "",
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+    );
+    redirectedCorrection = null;
+  }
+
+  function verdictCorrectionState(item) {
+    // Return the explicit idempotent command represented by one button.
+
+    const effectiveProductive = Boolean(item.productive);
+    const originalProductive = modelProductive(item);
+    const corrected = effectiveProductive !== originalProductive;
+    if (corrected) {
+      return {
+        buttonLabel: "Restore model verdict",
+        desiredProductive: String(originalProductive).toLowerCase(),
+        revision: String(correctionRevision(item)),
+      };
+    }
+    return {
+      buttonLabel: effectiveProductive ? "Actually off track" : "Actually productive",
+      desiredProductive: String(!effectiveProductive).toLowerCase(),
+      revision: String(correctionRevision(item)),
+    };
+  }
+
+  function createHiddenInput(name, value) {
+    // Hidden inputs submit the target identity and desired state with the
+    // native form; the server remains responsible for validating every value:
+    // https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/hidden
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = String(value);
+    return input;
+  }
+
+  function createVerdictCorrectionForm(item) {
+    // Build the latest verdict's progressively enhanced native POST action.
+
+    const correction = verdictCorrectionState(item);
+    const form = document.createElement("form");
+    const button = document.createElement("button");
+
+    // A native form stays keyboard-operable and works without a custom fetch
+    // mutation path: https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form
+    form.method = "post";
+    form.action = "/verdict/correct";
+    form.className = "verdict-correction-form";
+    form.setAttribute("aria-label", "Correct the latest productivity evaluation");
+    form.append(
+      createHiddenInput("verdict_id", item.verdict_id),
+      createHiddenInput("expected_revision", correction.revision),
+      createHiddenInput("productive", correction.desiredProductive),
+    );
+
+    // An explicit submit type makes the native button's form behavior clear:
+    // https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/button#type
+    button.type = "submit";
+    button.className = "secondary-button verdict-correction-button";
+    button.textContent = correction.buttonLabel;
+    form.append(button);
+    return form;
   }
 
   function accessLabels(access) {
@@ -315,8 +441,11 @@
     const meta = document.createElement("div");
     const badge = document.createElement("span");
     const time = document.createElement("time");
+    const reasonLabel = document.createElement("p");
     const reason = document.createElement("p");
     const productive = Boolean(item.productive);
+    const originalProductive = modelProductive(item);
+    const corrected = verdictIsCorrected(item);
 
     listItem.className = "timeline-item";
     listItem.dataset.productive = String(productive);
@@ -326,10 +455,14 @@
     meta.className = "verdict-meta";
     badge.className = "verdict-badge";
     badge.dataset.productive = String(productive);
-    badge.textContent = productive ? "Productive" : "Off track";
+    badge.textContent = verdictLabel(productive);
     time.className = "verdict-time";
     time.dateTime = item.ts || "";
     time.textContent = formatClock(item.ts);
+    reasonLabel.className = "verdict-reason-label";
+    reasonLabel.textContent = corrected
+      ? "Original model explanation"
+      : "Model explanation";
     reason.className = "verdict-reason";
     reason.textContent = item.reason || "No reason was returned.";
 
@@ -342,7 +475,23 @@
       header.append(latest);
       article.setAttribute("aria-current", "true");
     }
-    article.append(header, reason);
+    article.append(header);
+
+    if (corrected) {
+      const correction = document.createElement("p");
+      const marker = document.createElement("span");
+      const original = document.createElement("span");
+
+      correction.className = "verdict-correction";
+      marker.className = "verdict-correction-marker";
+      marker.textContent = "Corrected by you";
+      original.className = "verdict-original-verdict";
+      original.textContent = `Original model verdict: ${verdictLabel(originalProductive)}.`;
+      correction.append(marker, original);
+      article.append(correction);
+    }
+
+    article.append(reasonLabel, reason);
 
     if (item.observed) {
       // Native details/summary provides an accessible disclosure without a
@@ -359,6 +508,12 @@
       article.append(details);
     }
 
+    if (index === 0 && item.verdict_id) {
+      // Only the newest card can be corrected. The hidden ID and revision let
+      // Flask reject a click if a newer monitor result wins the race.
+      article.append(createVerdictCorrectionForm(item));
+    }
+
     listItem.append(article);
     return listItem;
   }
@@ -366,7 +521,16 @@
   function renderHistory(history) {
     const items = history || [];
     const signature = JSON.stringify(
-      items.map((item) => [item.ts, item.productive, item.reason, item.observed]),
+      items.map((item) => [
+        item.verdict_id,
+        item.ts,
+        item.model_productive,
+        item.productive,
+        item.correction_revision,
+        item.corrected_at,
+        item.reason,
+        item.observed,
+      ]),
     );
     if (signature === renderedHistorySignature) {
       return;
@@ -391,16 +555,68 @@
     renderedHistorySignature = signature;
 
     const newest = items[0];
-    if (newest && latestAnnouncedVerdictTs && newest.ts !== latestAnnouncedVerdictTs) {
+    const newestId = newest ? verdictIdentity(newest) : null;
+    const newestKey = newest ? verdictAnnouncementKey(newest) : null;
+    const redirectedCorrectionMatches = Boolean(
+      newest
+      && redirectedCorrection
+      && newestId === redirectedCorrection.verdictId
+      && String(correctionRevision(newest)) === redirectedCorrection.revision,
+    );
+    if (redirectedCorrectionMatches) {
+      // The native POST reloaded this document. Its exact ID/revision marker
+      // lets the new live region announce the accepted same-tab change once.
       setText(
         "dashboard-announcement",
-        `New productivity evaluation: ${newest.productive ? "productive" : "off track"}. ${newest.reason}`,
+        `Productivity evaluation corrected: now ${verdictLabel(Boolean(newest.productive)).toLowerCase()}.`,
+      );
+    } else if (
+      newest
+      && latestAnnouncedVerdictKey
+      && newestKey !== latestAnnouncedVerdictKey
+    ) {
+      const sameVerdict = newestId === latestAnnouncedVerdictId;
+      // `role=status` on the target supplies a polite live region without
+      // moving keyboard focus:
+      // https://www.w3.org/TR/wai-aria-1.2/#status
+      setText(
+        "dashboard-announcement",
+        sameVerdict
+          ? `Productivity evaluation corrected: now ${verdictLabel(Boolean(newest.productive)).toLowerCase()}.`
+          : `New productivity evaluation: ${verdictLabel(Boolean(newest.productive)).toLowerCase()}. ${newest.reason}`,
       );
     }
-    latestAnnouncedVerdictTs = newest ? newest.ts : null;
+    if (redirectedCorrection) {
+      // A mismatch means a newer session/verdict won the redirect race; clear
+      // the stale marker without announcing the wrong evaluation.
+      clearCorrectionAnnouncementQuery();
+    }
+    latestAnnouncedVerdictId = newestId;
+    latestAnnouncedVerdictKey = newestKey;
   }
 
-  function summarizeLoopResult(name, result) {
+  function matchingMonitorVerdict(result, status) {
+    // Runtime stores the raw analyzer outcome, while status history carries
+    // the user's effective correction. Match by immutable ID before combining.
+    if (!result?.verdict_id) {
+      return null;
+    }
+    const latest = status?.last_verdict || status?.evaluation_history?.[0];
+    return latest?.verdict_id === result.verdict_id ? latest : null;
+  }
+
+  function rawMonitorResultLabel(rawStatus) {
+    // Normalize scheduler language to the friendlier wording used by badges.
+    if (rawStatus === "productive") {
+      return verdictLabel(true);
+    }
+    if (rawStatus === "unproductive") {
+      return verdictLabel(false);
+    }
+    return titleCase(rawStatus);
+  }
+
+  function summarizeLoopResult(name, result, status) {
     if (!result) {
       return "No completed run yet.";
     }
@@ -412,7 +628,16 @@
       return result.status === "off" ? "Enforcement is off." : "No target apps found.";
     }
     if (name === "monitor") {
-      return `Last result: ${titleCase(result.status)}`;
+      const verdict = matchingMonitorVerdict(result, status);
+      if (verdict) {
+        const effectiveLabel = verdictLabel(Boolean(verdict.productive));
+        if (verdictIsCorrected(verdict)) {
+          const originalLabel = verdictLabel(modelProductive(verdict)).toLowerCase();
+          return `Last result: ${effectiveLabel} (corrected from ${originalLabel})`;
+        }
+        return `Last result: ${effectiveLabel}`;
+      }
+      return `Last result: ${rawMonitorResultLabel(result.status)}`;
     }
     if (name === "agent_watch") {
       return `Last result: ${titleCase(result.status)}`;
@@ -420,7 +645,7 @@
     return `Last result: ${titleCase(result.status)}`;
   }
 
-  function createRuntimeRow(name, loop) {
+  function createRuntimeRow(name, loop, status) {
     const row = document.createElement("article");
     const header = document.createElement("div");
     const title = document.createElement("p");
@@ -438,7 +663,7 @@
     detail.className = "runtime-detail";
     detail.textContent = `${formatCadence(loop.interval_s)} · last ${formatClock(loop.last_finished_at)}`;
     result.className = "runtime-result";
-    result.textContent = summarizeLoopResult(name, loop.last_result);
+    result.textContent = summarizeLoopResult(name, loop.last_result, status);
 
     header.append(title, phase);
     row.append(header, detail, result);
@@ -457,7 +682,7 @@
     return row;
   }
 
-  function renderOperations(runtime) {
+  function renderOperations(runtime, status) {
     const container = byId("runtime-loops");
     if (!container) {
       return;
@@ -465,7 +690,7 @@
     const snapshot = runtime || { running: false, loops: {} };
     const fragment = document.createDocumentFragment();
     Object.entries(snapshot.loops || {}).forEach(([name, loop]) => {
-      fragment.append(createRuntimeRow(name, loop));
+      fragment.append(createRuntimeRow(name, loop, status));
     });
     container.replaceChildren(fragment);
     setText("scheduler-state", snapshot.running ? "Running" : "Stopped");
@@ -477,7 +702,7 @@
     renderConditions(status);
     renderGoalAccess(status);
     renderHistory(status.evaluation_history);
-    renderOperations(status.runtime);
+    renderOperations(status.runtime, status);
     updateLiveClocks();
   }
 

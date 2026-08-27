@@ -106,3 +106,76 @@ def test_template_uses_one_macro_and_status_assets_use_unified_access_copy():
     assert ".access-choice-grid" in stylesheet
     assert ".access-capability" in stylesheet
     assert "@media (max-width: 480px)" in stylesheet
+
+
+def test_latest_verdict_gets_one_native_idempotent_correction_form():
+    """Only the newest verdict submits its identity, revision, and new label."""
+
+    script = (STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
+
+    # A real form preserves keyboard/browser behavior and keeps POST as the
+    # server-side mutation boundary:
+    # https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form
+    assert 'form.method = "post"' in script
+    assert 'form.action = "/verdict/correct"' in script
+    assert 'createHiddenInput("verdict_id", item.verdict_id)' in script
+    assert (
+        'createHiddenInput("expected_revision", correction.revision)' in script
+    )
+    assert 'createHiddenInput("productive", correction.desiredProductive)' in script
+    assert "index === 0 && item.verdict_id" in script
+    assert "Actually productive" in script
+    assert "Actually off track" in script
+    assert "Restore model verdict" in script
+
+
+def test_corrected_verdict_keeps_the_model_judgment_visible_and_text_safe():
+    """An override changes the effective badge without rewriting model evidence."""
+
+    script = (STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
+
+    assert "model_productive" in script
+    assert "Corrected by you" in script
+    assert "Original model verdict" in script
+    assert "Original model explanation" in script
+    assert "reason.textContent" in script
+    assert ".innerHTML" not in script
+    # Dashboard totals must use the effective user-overridable classification.
+    assert "history.filter((item) => item.productive).length" in script
+
+
+def test_corrections_update_runtime_copy_and_the_polite_live_announcement():
+    """Polling and POST redirects both announce the effective same-ID edit."""
+
+    script = (STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
+
+    assert "result.verdict_id" in script
+    assert "corrected from" in script
+    assert "correction_revision" in script
+    assert "Productivity evaluation corrected" in script
+    assert '"dashboard-announcement"' in script
+    assert 'initialQuery.get("verdict_corrected")' in script
+    assert "redirectedCorrectionMatches" in script
+    assert "clearCorrectionAnnouncementQuery" in script
+    assert "window.history.replaceState" in script
+
+
+def test_verdict_correction_controls_are_compact_and_responsive():
+    """Correction metadata and its action remain readable on narrow screens."""
+
+    stylesheet = (STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    assert ".verdict-correction" in stylesheet
+    assert ".verdict-correction-marker" in stylesheet
+    assert ".verdict-correction-form" in stylesheet
+    assert ".verdict-correction-button" in stylesheet
+    correction_button = stylesheet[
+        stylesheet.index(".verdict-correction-button"):
+    ]
+    assert "min-height: 2.75rem" in correction_button
+    reason_label = stylesheet[stylesheet.index(".verdict-reason-label"):
+                              stylesheet.index(".verdict-correction {")]
+    assert "color: var(--muted)" in reason_label
+    mobile = stylesheet[stylesheet.index("@media (max-width: 480px)"):]
+    assert ".verdict-correction-form" in mobile
+    assert ".verdict-correction-button" in mobile
