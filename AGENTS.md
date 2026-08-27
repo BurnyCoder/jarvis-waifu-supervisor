@@ -113,6 +113,17 @@ Implementation details live under `deepwork/`:
   changes, timestamps, clocks, cursors, animations, webcam lighting, and minor
   posture changes do not establish progress. Do not invent a static-work
   exception for a vague task.
+- Mathematics worked out on a tablet is a supported static-work case when the
+  stated topic is concretely math-related. A visibly recognizable unsolved
+  exercise, equation, or problem statement may stay unchanged onscreen while
+  corroborating webcam evidence shows stylus use, handwriting, or a task-directed
+  calculation posture. The tablet surface and fresh handwriting need not appear
+  in every snapshot, and brief thinking pauses may occur while the combined
+  evidence remains coherent. Sustained combined evidence can establish focus
+  across a long interval, not solution progress unless chronology shows
+  advancement. The exercise, device or stylus presence, looking down, or posture
+  changes without task-directed engagement are insufficient; clear unrelated
+  browsing, media, chat, or gaming remains unproductive.
 - A music video occupying only a secondary part of a monitor is neutral
   work-supporting background media, not evidence of productivity. Capture one
   still uses the current-engagement rule; from capture two onward, the remaining
