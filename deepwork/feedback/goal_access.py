@@ -57,11 +57,12 @@ def queue_transition_feedback(
     kind: str,
     *,
     grant=None,
+    waits_for_policy: bool = True,
     waits_for_goal_open: bool = False,
     accepts_later_policy: bool = False,
     **context,
 ) -> None:
-    """Freeze one model request in lifecycle order before reconciliation."""
+    """Freeze one model request behind its required durability gates."""
 
     frozen_context = tuple(
         (key, tuple(value) if isinstance(value, list) else value)
@@ -72,6 +73,7 @@ def queue_transition_feedback(
         context=frozen_context,
         policy_revision=state.feedback_policy_revision,
         grant=grant,
+        waits_for_policy=waits_for_policy,
         waits_for_goal_open=waits_for_goal_open,
         accepts_later_policy=accepts_later_policy,
     ))

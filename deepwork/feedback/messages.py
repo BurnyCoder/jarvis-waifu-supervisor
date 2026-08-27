@@ -93,6 +93,14 @@ _TEMPLATES = {
         "current task without overstating effective enforcement. No emojis, "
         "it will be read aloud."
     ),
+    "verdict_correction": (
+        "The user {correction_action} for the latest productivity evaluation "
+        "from {from_label!r} to {to_label!r}. Write one short, neutral spoken "
+        "sentence confirming that the saved evaluation will count as "
+        "{to_label!r}. Do not praise, do not nudge, do not challenge the "
+        "correction, and do not reassess or reinterpret the visual evidence. "
+        "No emojis, it will be read aloud."
+    ),
 }
 
 

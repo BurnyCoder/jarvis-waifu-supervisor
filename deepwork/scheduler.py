@@ -20,7 +20,7 @@ from deepwork.feedback.goal_access import (
 )
 from deepwork.monitoring import screen_capture, stitcher, webcam_capture
 from deepwork.runtime_status import RuntimeStatus
-from deepwork.state import goal_access_event
+from deepwork.state import goal_access_event, new_verdict_id
 
 log = logging.getLogger(__name__)
 
@@ -263,23 +263,37 @@ class Scheduler:
             ):
                 return {"status": "context_changed"}
             return {"status": "no_verdict"}
-        # Context comparison and publication share the state lock. A transition
-        # during model work therefore produces no verdict event or speech.
+        # A UUID links this model result across live state, JSONL, runtime
+        # telemetry, and any later user correction without relying on timestamps.
         verdict_at = self.now_fn()
-        accepted, outcome = self.state.record_verdict_if_context(
-            context,
-            verdict.productive,
-            minutes=self.verdict_minutes,
-            observed=verdict.observed,
-            reason=verdict.reason,
-            now=verdict_at,
-        )
-        if not accepted:
-            return {"status": "context_changed"}
-        self.store.append_session_event({"event": "verdict",
-                                         "productive": verdict.productive,
-                                         "reason": verdict.reason,
-                                         "observed": verdict.observed})
+        verdict_id = new_verdict_id()
+        # The lifecycle coordinator orders accepted state and its source event
+        # against Flask transitions/corrections without holding the data lock
+        # during filesystem I/O. The context method still atomically rejects a
+        # session or policy transition that completed during model work.
+        with self.state.goal_access_lifecycle():
+            accepted, outcome = self.state.record_verdict_if_context(
+                context,
+                verdict.productive,
+                minutes=self.verdict_minutes,
+                observed=verdict.observed,
+                reason=verdict.reason,
+                now=verdict_at,
+                verdict_id=verdict_id,
+            )
+            if not accepted:
+                return {"status": "context_changed"}
+            self.store.append_session_event({
+                "event": "verdict",
+                "verdict_id": verdict_id,
+                "evaluated_at": verdict_at.isoformat(),
+                "model_productive": verdict.productive,
+                "productive": verdict.productive,
+                "credited_minutes": self.verdict_minutes,
+                "correction_revision": 0,
+                "reason": verdict.reason,
+                "observed": verdict.observed,
+            })
         if outcome:                                # milestone nudge or praise
             # The message model gets what was SEEN plus the whole session
             # snapshot, so the spoken line can quote concrete specifics.
@@ -291,9 +305,26 @@ class Scheduler:
             # The vision reason is already LLM-generated, fresh, concrete and
             # speech-ready, so ordinary productive ticks need no second call.
             text = verdict.reason
-        self.speech.say(text)                      # exactly one line per verdict
+        # A correction can be accepted while the optional message model runs.
+        # Recheck under the same coordinator used by the correction route so a
+        # stale original nudge/praise can never be enqueued after that override.
+        with self.state.goal_access_lifecycle():
+            if self.state.verdict_matches(
+                verdict_id,
+                verdict.productive,
+                correction_revision=0,
+            ):
+                self.speech.say(text)              # exactly one line per verdict
+            else:
+                log.info(
+                    "original verdict speech suppressed after state change: %s",
+                    verdict_id,
+                )
+        model_status = "productive" if verdict.productive else "unproductive"
         return {
-            "status": "productive" if verdict.productive else "unproductive",
+            "status": model_status,
+            "model_status": model_status,
+            "verdict_id": verdict_id,
             "verdict_ts": verdict_at.isoformat(),
         }
 

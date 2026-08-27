@@ -9,6 +9,7 @@ from datetime import datetime
 from deepwork.feedback.goal_access import (
     GoalAccessFeedbackQueue,
     queue_goal_access_feedback,
+    queue_transition_feedback,
 )
 from deepwork.feedback.messages import MessageGenerator, build_prompt
 from deepwork.feedback.tts import SpeechQueue, fix_streamed_wav_header
@@ -73,6 +74,16 @@ def test_build_prompt_covers_all_message_kinds():
     assert "collect the exact launch quotation" in p
     assert "Discord and Telegram" in p
     assert "the user marked the goal complete" in p
+    p = build_prompt(
+        "verdict_correction",
+        correction_action="corrected the monitor",
+        from_label="off track",
+        to_label="productive",
+        session_context=CTX,
+    )
+    assert "corrected the monitor" in p
+    assert "off track" in p and "productive" in p
+    assert "do not praise" in p.lower() and "do not nudge" in p.lower()
 
 
 def test_all_prompts_carry_session_context_and_nudge_quotes_observed():
@@ -97,6 +108,11 @@ def test_all_prompts_carry_session_context_and_nudge_quotes_observed():
                             "goal": "collect citations",
                             "group_labels": "Discord",
                             "end_reason": "the timer expired",
+                        }),
+                        ("verdict_correction", {
+                            "correction_action": "corrected the monitor",
+                            "from_label": "off track",
+                            "to_label": "productive",
                         })]:
         p = build_prompt(kind, session_context=CTX, **extra)
         assert CTX in p, f"{kind} prompt missing session context"
@@ -258,6 +274,49 @@ def test_goal_access_feedback_queue_returns_before_slow_model_work():
     delivery.thread.join(timeout=1)
     assert speech.spoken == ["<goal_access_start>"]
     assert not delivery.thread.is_alive()
+
+
+def test_policy_independent_correction_feedback_waits_only_for_event_release():
+    """A correction acknowledgment needs durable JSONL, not hosts approval."""
+
+    class Messages:
+        def __init__(self):
+            self.calls = []
+
+        def generate(self, kind, **context):
+            self.calls.append((kind, context))
+            return f"<{kind}>"
+
+    class Speech:
+        def __init__(self):
+            self.spoken = []
+
+        def say(self, text):
+            self.spoken.append(text)
+
+    state = SessionState()
+    state.start_session("research")
+    messages, speech = Messages(), Speech()
+    delivery = GoalAccessFeedbackQueue(state, messages, speech)
+    queue_transition_feedback(
+        state,
+        "verdict_correction",
+        waits_for_policy=False,
+        correction_action="corrected the monitor",
+        from_label="off track",
+        to_label="productive",
+        session_context="topic: research",
+    )
+
+    # Event durability is the only gate: no policy-applied call is needed.
+    assert state.release_goal_access_feedback() is True
+    delivery.wake()
+    assert delivery.wait_idle(timeout=2) is True
+    delivery.stop()
+    delivery.thread.join(timeout=1)
+
+    assert [call[0] for call in messages.calls] == ["verdict_correction"]
+    assert speech.spoken == ["<verdict_correction>"]
 
 
 def test_fix_streamed_wav_header_patches_placeholder_sizes(tmp_path):
