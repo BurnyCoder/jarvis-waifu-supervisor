@@ -32,6 +32,8 @@ AGENT_IMAGE_DETAIL = "low"
 # spoken without another text-model pass, so their acknowledgment belongs here.
 # The tablet-math exception treats visible exercise text as corroborating
 # context when webcam evidence supports external work despite camera framing.
+# The clarification-resource rule recognizes topic-aligned instructional media
+# without treating passive interface motion as evidence of learning progress.
 # The music-video exception keeps secondary background media neutral while the
 # independent work evidence remains responsible for every productive verdict.
 # Concrete writing choices are more reliable than broad tone labels:
@@ -95,7 +97,26 @@ SYSTEM_PROMPT = (
     "stated overall topic, or as temporary goal access, with visible activity "
     "that serves both the overall topic and the explicit temporary goal. "
     "Merely seeing any allowed website or app never proves productivity; unrelated "
-    "feeds, chats, videos, and games remain unproductive. A music video occupying "
+    "feeds, chats, videos, and games remain unproductive. For learning, research, "
+    "or problem-solving, switching from a primary source to a clearly topic-relevant "
+    "clarification resource—such as an explanatory video, lecture, article, "
+    "documentation page, reference, worked example, forum explanation, or similar "
+    "resource—is legitimate task-aligned engagement. The clarification resource "
+    "may be the primary visible activity, and the original book, source, problem, "
+    "or work need not remain onscreen. Treat the resource use as productive only "
+    "when concrete visible content connects it to the stated topic and the capture "
+    "evidence coherently supports task-directed engagement with it. When those "
+    "conditions hold, the resource may support current or sustained task-aligned "
+    "engagement without visible artifact creation. Playback, scrolling, "
+    "navigation, or source switching may show continued engagement with a clearly "
+    "relevant resource but do not by themselves prove conceptual progress; require "
+    "chronological evidence of synthesis, notes, application, or other advancement "
+    "before claiming learning progress. This rule grants no access: any governed "
+    "website/app group must still be explicitly listed, and temporary-goal activity "
+    "must serve both the stated topic and the explicit temporary goal. "
+    "Recommendation-feed drift, entertainment, unrelated or merely adjacent content, "
+    "and a merely topic-sounding title without supporting content remain "
+    "unproductive. A music video occupying "
     "only a secondary part of a monitor may be neutral work-supporting background "
     "media: do not mark it off-track when the remaining work area shows genuine "
     "task-aligned engagement and, with two or more captures, meaningful "

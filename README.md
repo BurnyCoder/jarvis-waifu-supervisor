@@ -82,6 +82,20 @@ the AI can be wrong, and anyone with administrator access can undo the policy.
      not justify an invented static-work exception. Timestamps, clocks, cursors,
      animations, webcam lighting, minor posture changes, and unrelated visible
      changes do not establish progress.
+   - Learning, research, and problem-solving may move from a primary source to a
+     clearly topic-relevant clarification resource, including an explanatory
+     video, lecture, article, documentation page, reference, worked example, or
+     forum explanation. The resource may become the primary visible activity;
+     the original book or work need not remain onscreen. It counts as productive
+     only when concrete visible content connects it to the topic and the capture
+     evidence coherently supports task-directed engagement. When those conditions
+     hold, it can establish current or sustained focus without a visible artifact,
+     but playback, scrolling, navigation, and source switching alone do not prove
+     conceptual progress. Progress claims still require chronological evidence
+     such as synthesis, notes, or application. Governed website/app groups must
+     remain explicitly allowed, temporary-goal activity
+     must serve both the topic and goal, and unrelated media or recommendation
+     drift remains off-track.
    - Mathematics worked out on a tablet is a supported static-work case. A
      visibly recognizable unsolved exercise, equation, or problem statement can
      corroborate a concrete math topic even while it stays unchanged onscreen,

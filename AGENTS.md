@@ -113,6 +113,20 @@ Implementation details live under `deepwork/`:
   changes, timestamps, clocks, cursors, animations, webcam lighting, and minor
   posture changes do not establish progress. Do not invent a static-work
   exception for a vague task.
+- Learning, research, and problem-solving may switch from a primary source to a
+  clearly topic-relevant clarification resource, including an explanatory video,
+  lecture, article, documentation page, reference, worked example, or forum
+  explanation. The resource may be the primary visible activity without the
+  original book or work remaining onscreen. It is productive only when concrete
+  visible content connects it to the topic and the capture evidence coherently
+  supports task-directed engagement. When those conditions hold, it can establish
+  current or sustained focus without visible artifact creation, but playback,
+  scrolling, navigation, or source switching alone does not prove conceptual
+  progress. Claim progress only from chronological evidence such as synthesis,
+  notes, application, or other advancement. Any governed website/app group must
+  still be explicitly allowed; temporary-goal activity
+  must serve both topic and goal. Unrelated media, recommendation drift, and
+  merely topic-sounding titles without supporting content remain unproductive.
 - Mathematics worked out on a tablet is a supported static-work case when the
   stated topic is concretely math-related. A visibly recognizable unsolved
   exercise, equation, or problem statement may stay unchanged onscreen while

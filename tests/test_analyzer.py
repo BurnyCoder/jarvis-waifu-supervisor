@@ -85,6 +85,48 @@ def test_prompt_requires_task_aware_meaningful_snapshot_comparison():
     assert "why that evidence is or is not adequate for the stated task" in prompt
 
 
+def test_prompt_allows_topic_aligned_clarification_resources():
+    """A relevant clarification resource may replace the original source onscreen."""
+
+    prompt = SYSTEM_PROMPT.lower()
+    # The rule is general across learning formats instead of encoding one subject
+    # or one website as a special case.
+    assert "learning, research, or problem-solving" in prompt
+    assert (
+        "explanatory video, lecture, article, documentation page, reference, "
+        "worked example, forum explanation"
+    ) in prompt
+    # A learner may focus on the clarification resource itself without keeping
+    # the original book, problem, or artifact visible beside it.
+    assert "may be the primary visible activity" in prompt
+    assert "need not remain onscreen" in prompt
+    assert "without visible artifact creation" in prompt
+    # Relevant consumption can establish engagement, but passive UI changes do
+    # not justify a false claim that the learner understood or advanced.
+    assert "may support current or sustained task-aligned engagement" in prompt
+    assert "playback, scrolling, navigation, or source switching" in prompt
+    assert "do not by themselves prove conceptual progress" in prompt
+    assert "synthesis, notes, application, or other advancement" in prompt
+    # Concrete relevance and the existing access contract prevent this rule from
+    # turning vaguely adjacent media or an ungranted website into productive work.
+    required_evidence = (
+        "productive only when concrete visible content connects it to the stated "
+        "topic"
+    )
+    assert required_evidence in prompt
+    assert "capture evidence coherently supports task-directed engagement" in prompt
+    assert "any governed website/app group must still be explicitly listed" in prompt
+    assert (
+        "temporary-goal activity must serve both the stated topic and the "
+        "explicit temporary goal"
+    ) in prompt
+    assert (
+        "recommendation-feed drift, entertainment, unrelated or merely adjacent "
+        "content"
+    ) in prompt
+    assert "merely topic-sounding title without supporting content" in prompt
+
+
 def test_prompt_recognizes_tablet_math_as_evidence_backed_static_work():
     """An unchanged exercise can corroborate, but never prove, tablet work."""
 
