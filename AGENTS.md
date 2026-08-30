@@ -23,7 +23,7 @@ Run from the repository root with the uv-managed local `.venv`:
 uv sync --locked                   # reproduce the checked-in lockfile
 uv sync                            # update after an intentional dependency edit
 uv lock --check                    # verify lockfile/project metadata consistency
-uv run pytest                      # complete fake-backed unit suite
+uv run pytest                      # hardware/network/admin-free automated suite
 uv run python main.py --help       # CLI surface
 uv run python main.py --dry-hosts  # UI + scheduler; no UAC/hosts writes
 uv run python main.py --dry-hosts --open-browser  # readiness-gated browser; dry hosts
@@ -69,7 +69,7 @@ Implementation details live under `deepwork/`:
 | `monitoring/screen_capture.py` | One Pillow image per physical monitor via mss |
 | `monitoring/webcam_capture.py` | DirectShow camera-index-0 frame; an unsuccessful read returns `None`, while exceptions fail that capture tick |
 | `monitoring/stitcher.py` | Labeled vertical composite after resizing each monitor/webcam tile to 960 pixels wide |
-| `monitoring/analyzer.py` | Original-detail productivity verdict: current alignment on capture 1 and task-aware rolling comparison from capture 2; low-detail single-capture agent-activity verdict |
+| `monitoring/analyzer.py` | Original-detail productivity verdict within the selected model's sizing limits: current alignment on capture 1 and task-aware rolling comparison from capture 2; low-detail single-capture agent-activity verdict |
 | `feedback/goal_access.py` | Policy-optional, event-durability-gated transition acknowledgments and independent FIFO message-generation worker |
 | `feedback/messages.py` | Context-grounded good-luck, nudge, milestone-praise, break, goal-access, verdict-correction, and agent-transition text |
 | `feedback/tts.py` | OpenAI temporary WAV or per-utterance pyttsx3 speaker behind one FIFO daemon worker |
@@ -77,6 +77,23 @@ Implementation details live under `deepwork/`:
 | `webui/status.py` | Composition of state and scheduler snapshots |
 | `webui/server.py` | Loopback threaded Werkzeug serving, optional `/status` readiness polling, and one-time default-browser launch |
 | `webui/templates/`, `static/` | Actions-first dashboard, latest-verdict correction form, and safe non-overlapping polling |
+
+Documentation ownership is deliberately split to keep the README useful without
+repeating the implementation contract:
+
+| Document | Maintained scope |
+|---|---|
+| `README.md` | First-run methodology, data flow, architecture overview, reproducible setup, primary usage, configuration, privacy summary, recovery, and documentation map |
+| `docs/user-guide.md` | Detailed modes, access groups and presets, goal access, breaks, agentic mode, dashboard/status, disable, and exit behavior |
+| `docs/architecture.md` | Module boundaries, collaborators, threads, locks, transition ordering, and storage flow |
+| `docs/privacy-and-data.md` | Exact uploads/artifacts, OpenAI retention context, cost drivers, and handling guidance |
+| `docs/startup.md` | Launcher, elevation, binding, readiness, and browser-open behavior |
+| `docs/troubleshooting.md` | Safe recovery and symptom-based runtime diagnostics |
+| `docs/verification.md` | Automated checks and explicitly side-effecting manual/system verification |
+| `docs/verdict-corrections.md` | Focused correction API, accounting, ordering, and regression contract |
+
+Update the narrow document that owns a detail and link to it from the README;
+do not copy the same explanation into several files.
 
 ## Behavioral invariants
 
@@ -210,7 +227,9 @@ Implementation details live under `deepwork/`:
   empty topic; Break trusts HTML for purpose, duration, and kind, calls `int()`
   outside its error handler, does not reject zero/negative/above-240 minutes or
   arbitrary kinds, and can corrupt accounting with negative `social_media`
-  minutes.
+  minutes. The `/agentic` route also accepts a forged toggle outside ON mode
+  because neither the route nor `SessionState.set_agentic()` guards the
+  current mode.
 - Task and preset groups remain active during ON and BREAK, are part of the
   analyzer's permanent task context while monitoring is active, spend no social
   allowance, and spare any selected app-capable processes.
@@ -235,8 +254,10 @@ Implementation details live under `deepwork/`:
 - `HostsBlocker` rewrites the complete hosts file directly; it has no atomic
   replace, backup, or cross-process lock, and ignores DNS-flush exit status.
   Startup begins OFF/clean and does not proactively clear a fenced section left
-  by a hard-killed prior process. Run one instance only and preserve the manual
-  cleanup warning.
+  by a hard-killed prior process. If a start marker exists without its end
+  marker, the next apply or clear treats everything after the start marker as
+  owned content and drops it. Run one instance only and preserve the manual
+  cleanup and backup warning.
 - Complete goal-access events and successful enforcement precede optional
   transition message/TTS work. Start, manual stop, and expiry each enqueue one
   immutable acknowledgment context. Successful serialized reconciliation moves
@@ -253,9 +274,10 @@ Implementation details live under `deepwork/`:
   complete timestamped line for enforcer retry, never prevents immediate hosts
   reconciliation, and rolls partial/close-time writes back to the previous line
   boundary before retry. Matching transition speech waits until earlier events
-  are durable. All ready session, break, agent, and goal transition work shares
-  one FIFO worker. A goal request still gated on failed enforcement/event
-  durability is not ready and may be overtaken by an independent later
+  are durable. All ready session, break, agent, goal-transition, and
+  verdict-correction work shares one FIFO worker. A goal request still gated on
+  failed enforcement or event durability is not ready and may be overtaken by
+  an independent later
   acknowledgment; preserve that behavior and never announce unapplied access.
 - Positive social-break minutes are reserved in full when the break starts.
   Manual stop charges each started minute and refunds the unelapsed reservation
@@ -395,6 +417,9 @@ For every change:
    `uv run python main.py --dry-hosts --open-browser` with an available
    nondefault `UI_PORT`; verify one first-load tab without refresh and inspect
    listening/readiness/open log ordering. `--smoke` does not cover this path.
+   Use `docs/verification.md` to distinguish hardware/network/admin-free
+   checks from opt-in commands that kill processes, upload captures, speak, or
+   modify the hosts file.
 4. Inspect the newest terminal/file logs and relevant `results/` artifacts.
    Confirm prompts, outputs, stored records, and spoken behavior agree.
 5. Fix observed issues, rerun the affected path, and push the corrected
@@ -452,16 +477,17 @@ network, or model nondeterminism.
   the system resolver, while software with its own resolver can bypass that
   path; keep README wording conditional.
 - Hard termination can skip `atexit`; manual fenced-section cleanup remains
-  necessary. Startup/Disable-while-OFF do not proactively remove a stale fence,
-  and even normal shutdown can abandon transition/speech work after its bounded
-  wait.
+  necessary. Startup, Disable while already OFF, and shutdown without ever
+  leaving OFF do not proactively remove a stale fence, and even normal shutdown
+  can abandon transition/speech work after its bounded wait.
 - Hosts policy is explicit, not wildcard-based. Substack author subdomains and
   other unlisted alternate domains are not covered.
 - Productivity vision uses original detail, which preserves supplied image
-  dimensions with the default GPT-5.6 Luna model but can increase input tokens
-  and latency. Every raw monitor/webcam tile is first resized to 960 pixels wide
-  and the composite is JPEG-compressed, so “original” does not mean native
-  monitor resolution. `VISION_MODEL` overrides must support original detail.
+  dimensions with the default GPT-5.6 Luna model within OpenAI's documented
+  sizing limits but can increase input tokens and latency. Every raw
+  monitor/webcam tile is first resized to 960 pixels wide and the composite is
+  JPEG-compressed, so “original” does not mean native monitor resolution.
+  `VISION_MODEL` overrides must support original detail.
   Tall composites, occlusion, ambiguity, and visually static work can still
   mislead it.
   Agent-watch vision remains low-detail and can miss small screen text. Never
