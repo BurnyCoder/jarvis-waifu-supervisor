@@ -1,5 +1,9 @@
 # Deep Work: Windows Productivity Enforcement
 
+<img width="898" height="1227" alt="Deep Work dashboard showing session controls, access groups, and runtime status cards" src="https://github.com/user-attachments/assets/7355ca74-aafb-471e-a6ac-ad3cd8f7cd34" />
+
+<img width="603" height="1434" alt="Deep Work dashboard showing the mobile layout, session history, and latest verdict controls" src="https://github.com/user-attachments/assets/794a6de7-e3ea-48c8-9f05-20e73f67d8ff" />
+
 Deep Work is a personal Windows 11 focus app. During a session it can block
 configured websites through the Windows hosts file, abruptly terminate named
 distraction apps, capture all monitors plus camera index `0` when readable,
@@ -190,10 +194,6 @@ verdict corrections, and known input limitations.
 
 The dashboard polls the no-cache `/status` endpoint every three seconds while
 the tab is visible and keeps the last good view through temporary failures.
-
-<img width="898" height="1227" alt="Deep Work dashboard showing session controls, access groups, and runtime status cards" src="https://github.com/user-attachments/assets/7355ca74-aafb-471e-a6ac-ad3cd8f7cd34" />
-
-<img width="603" height="1434" alt="Deep Work dashboard showing the mobile layout, session history, and latest verdict controls" src="https://github.com/user-attachments/assets/794a6de7-e3ea-48c8-9f05-20e73f67d8ff" />
 
 ## Configuration
 
