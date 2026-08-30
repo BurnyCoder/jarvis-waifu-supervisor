@@ -1,15 +1,15 @@
 # Deep Work: Windows Productivity Enforcement
 
-<img width="898" height="1227" alt="Deep Work dashboard showing session controls, access groups, and runtime status cards" src="https://github.com/user-attachments/assets/7355ca74-aafb-471e-a6ac-ad3cd8f7cd34" />
-
-<img width="603" height="1434" alt="Deep Work dashboard showing the mobile layout, session history, and latest verdict controls" src="https://github.com/user-attachments/assets/794a6de7-e3ea-48c8-9f05-20e73f67d8ff" />
-
 Deep Work is a personal Windows 11 focus app. During a session it can block
 configured websites through the Windows hosts file, abruptly terminate named
 distraction apps, capture all monitors plus camera index `0` when readable,
 ask OpenAI vision models whether the visible work matches the stated task, and
 speak feedback. A loopback-only Flask dashboard controls the session and shows
 the current policy, timers, scheduler health, and accepted verdict history.
+
+<img width="898" height="1227" alt="Deep Work dashboard showing session controls, access groups, and runtime status cards" src="https://github.com/user-attachments/assets/7355ca74-aafb-471e-a6ac-ad3cd8f7cd34" />
+
+<img width="603" height="1434" alt="Deep Work dashboard showing the mobile layout, session history, and latest verdict controls" src="https://github.com/user-attachments/assets/794a6de7-e3ea-48c8-9f05-20e73f67d8ff" />
 
 > [!CAUTION]
 > This project handles highly sensitive screen, webcam, task, and model-output
