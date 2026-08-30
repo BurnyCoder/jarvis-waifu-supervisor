@@ -33,10 +33,15 @@ therefore removes the control for the old verdict.
 
 ## Effective accounting
 
-Each model evaluation records its configured interval as `credited_minutes`
-and the productive streak that existed before that interval. When the latest
-verdict still belongs to the current streak segment, a correction folds that
-same interval again using the new effective label:
+Each model evaluation records
+`credited_minutes = max(1, CAPTURE_INTERVAL_S // 60)` and the productive streak
+that existed before that interval. The value uses integer floor division and
+is fixed when the scheduler is constructed: the default 300 seconds credits
+five minutes, while 90 seconds and any positive sub-minute test interval each
+credit one minute. It is not measured wall-clock time, so capture/model
+latency does not increase the credit. When the latest verdict still belongs to
+the current streak segment, a correction folds that same stored interval again
+using the new effective label:
 
 - Productive adds `credited_minutes` to the pre-verdict streak. Reaching or
   crossing 30 minutes resets the displayed streak to zero, matching an ordinary
@@ -89,7 +94,7 @@ Each `last_verdict` and `evaluation_history` entry in `/status` has these fields
 | `ts` | ISO timestamp when the model verdict was accepted |
 | `model_productive` | Immutable model classification |
 | `productive` | Effective classification used by the dashboard and accounting |
-| `credited_minutes` | Configured interval credited by this evaluation |
+| `credited_minutes` | `max(1, CAPTURE_INTERVAL_S // 60)` captured for this evaluation |
 | `correction_revision` | Starts at zero and increments for each accepted change |
 | `corrected_at` | ISO time of the active override, or `null` when effective equals model |
 | `reason` | Unchanged model-written explanation |
@@ -145,8 +150,8 @@ complete prompt and response are logged and stored under `results/llm/`, so the
 task, labels, and session-context text may be sent to OpenAI even though no new
 image is uploaded. With `TTS_ENGINE=openai`, the resulting utterance text is
 also sent to the Speech API; `TTS_ENGINE=pyttsx3` keeps only synthesis and
-playback local. See the README's [data, privacy, and cost](../README.md#data-privacy-and-cost)
-section for retention and local-storage caveats.
+playback local. See [Privacy, data, and cost](privacy-and-data.md) for the
+upload, retention, local-storage, and cost caveats.
 
 Corrections are not training signals. They are not added to future analyzer
 prompts, do not alter the model configuration, and do not teach subsequent
@@ -173,8 +178,11 @@ uv run pytest
 
 For a manual check:
 
-1. Run `uv run python main.py --dry-hosts --open-browser`, start a session, and
-   wait for one productivity evaluation.
+1. Close or save work in Discord, Telegram, and Steam, then run
+   `uv run python main.py --dry-hosts --open-browser`, start a session, and
+   wait for one productivity evaluation. This flag skips only UAC and real
+   hosts-file writes: after Start the app still kills configured apps, captures
+   and uploads monitor/webcam images, calls APIs, stores artifacts, and speaks.
 2. Use **Actually productive** or **Actually off track**. Confirm the effective
    badge, totals, streak, live announcement, and matching runtime summary change
    while the original model label, explanation, and observation remain visible.
