@@ -56,23 +56,9 @@ instead of proxy-aware URL helpers, and Werkzeug's separately usable
   [serving documentation](https://werkzeug.palletsprojects.com/en/stable/serving/)
   describes this as a development server.
 
-## Focused verification
+## Verification
 
-Choose an unused non-default port in `.env`, then run:
-
-```powershell
-uv run python main.py --dry-hosts --open-browser
-```
-
-Confirm one tab opens on that port without a connection-refused page or manual
-reload. The terminal and newest `logs/deepwork_*.log` should show, in order:
-
-```text
-control panel listening: http://127.0.0.1:<UI_PORT>
-waiting for dashboard readiness: http://127.0.0.1:<UI_PORT>/status
-dashboard ready: ... returned HTTP 200
-opened control panel in the default browser: ...
-```
-
-Use Ctrl+C to stop the process. Run `uv run pytest` for the fake-backed bind,
-retry, timeout, cancellation, browser-failure, CLI, and batch regressions.
+Use the [dashboard-readiness procedure](verification.md#dashboard-readiness)
+for the isolated-port command, expected log order, browser-failure checks, and
+focused automated tests. That guide owns executable verification steps so this
+startup contract cannot drift from a duplicated transcript.

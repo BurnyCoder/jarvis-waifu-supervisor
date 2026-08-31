@@ -7,12 +7,17 @@ also retained without encryption or automatic deletion.
 
 ## What each runtime path handles
 
+“Written locally” describes completed writes, not guaranteed transition-time
+durability. Direct capture/exchange writes can fail, and a failed session-event
+append can remain only in the process's ordered retry queue until a later retry
+succeeds.
+
 | Path | Sent to OpenAI | Written locally |
 |---|---|---|
-| Productivity monitor | One through `PROGRESS_WINDOW_CAPTURES` chronological stitched JPEGs; the topic; permanent task/preset access groups; any active temporary goal and its groups; the complete analyzer prompt | The newest stitched JPEG, a successful request/response exchange, an accepted verdict event, and complete prompt/output logging |
-| Agent watcher | One current stitched JPEG and the agent-activity prompt | The JPEG and each successful request/response exchange; an event only when the busy/idle state changes |
-| Text feedback | A message-specific prompt plus the full session context: topic, elapsed time, streak, allowance, relevant access state, break/agent state, and up to five recent observations | Each successful request/response exchange and the complete prompt/output log |
-| Verdict correction | No new image. A changed correction queues a text prompt containing the old/new labels and full session context | An append-only correction event plus the successful acknowledgement exchange; the original vision exchange is unchanged |
+| Productivity monitor | One through `PROGRESS_WINDOW_CAPTURES` chronological stitched JPEGs; the topic; permanent task/preset access groups; any active temporary goal and its groups; the complete analyzer prompt | The newest stitched JPEG, each successfully written request/response exchange, complete prompt/output logging, and the accepted verdict event after its JSONL append succeeds |
+| Agent watcher | One current stitched JPEG and the agent-activity prompt | The JPEG and each successfully written request/response exchange; only an actual busy/idle transition attempts an event, which appears in JSONL after its append succeeds |
+| Text feedback | A message-specific prompt plus a bounded current-session summary: topic, elapsed time, streak, allowance, relevant access state, break/agent state, and at most five recent observations | Each successfully written request/response exchange and the complete prompt/output log |
+| Verdict correction | No new image. A changed correction queues a text prompt containing the old/new labels and the same bounded current-session summary | The append-only correction event after its JSONL append succeeds, then any successfully written acknowledgement exchange; the original vision exchange is unchanged |
 | OpenAI speech | Only the utterance text selected for speech | A streamed WAV in the OS temporary directory until successful playback deletes it; speech responses and audio are not copied into `results/llm/` |
 | pyttsx3 speech | Nothing for synthesis or playback | Audio is synthesized and played locally; the monitoring and text-generation paths above still use OpenAI |
 
@@ -42,7 +47,7 @@ run from that directory.
 
 | Path | Contents and lifetime |
 |---|---|
-| `logs/deepwork_YYYYMMDD_HHMMSS.log` | One UTF-8 log per run. Textual LLM prompts and semantic outputs are logged completely to this file and the terminal; image base64 is represented by capture filenames instead of being dumped into the log. |
+| `logs/deepwork_YYYYMMDD_HHMMSS.log` | A whole-second-named UTF-8 log selected at setup. Textual LLM prompts and semantic outputs are logged completely to this file and the terminal; image base64 is represented by capture filenames. File logging uses append mode, so independent processes started in the same second can share one path. |
 | `results/captures/*.jpg` | Sensitive stitched monitor/webcam composites from successful capture persistence. |
 | `results/llm/*.json` | Complete successful text, productivity-vision, and agent-watch Responses API objects. Vision requests contain the saved JPEG paths instead of duplicate base64 bytes. Failed API calls and streamed speech are not stored here. |
 | `results/sessions/YYYYMMDD.jsonl` | Timestamped session, break, access, agent, verdict, and correction audit events, one JSON object per line. |

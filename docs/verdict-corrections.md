@@ -132,10 +132,13 @@ is not reloaded after restart.
 ## Spoken acknowledgement and privacy
 
 Each non-idempotent correction queues one AI-written, neutral confirmation. The
-text prompt states the correction action and old/new labels, includes the full
-session context, and explicitly tells the model not to praise, nudge, challenge
-the user, or reinterpret the visual evidence. It needs no hosts-policy approval,
-but it cannot become delivery-ready before the correction event is durable.
+text prompt states the correction action and old/new labels, includes the
+bounded current-session summary returned by `SessionState.context_summary()`,
+and explicitly tells the model not to praise, nudge, challenge the user, or
+reinterpret the visual evidence. That summary contains the current topic,
+timing, streak, allowance, relevant access/break/agent state, and at most five
+recent monitor observations. It needs no hosts-policy approval, but it cannot
+become delivery-ready before the correction event is durable.
 Model or speech failure does not roll back the correction and the claimed
 acknowledgement is not retried.
 

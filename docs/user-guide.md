@@ -178,7 +178,10 @@ Presets are loaded once at process startup. Restart after editing the file.
 ## Temporary goal-based access
 
 Use **Temporary goal-based access** during an ON session when the current task
-needs a limited exception:
+needs a limited exception. Unlike the Start and Break routes described under
+[direct-request limitations](#direct-request-input-limitations), this route
+validates its goal, duration mode, timed range, and group requirement on the
+server:
 
 1. State the concrete result you need to achieve.
 2. Choose either a timed duration or **Until this focused session ends**.
@@ -231,36 +234,57 @@ time, or immediately through the Stop button. Completion returns to ON, removes
 break-only access, makes any still-active goal grant eligible again, resets the
 productive streak, and resumes productivity monitoring.
 
-Use the dashboard form rather than hand-crafted `/break` requests. Although
-access-group keys are validated server-side, the current route relies on the
-HTML controls for a nonempty purpose, a 1–240-minute duration, and the exact
-`away` or `social_media` kind. It does not infer social use from the groups you
-select; accounting is based on the submitted kind.
-
 ## Agentic engineering mode
 
 Enable agentic mode on the Start form or change it from the **Agentic mode**
-card. It is meaningful during an ON session. The route currently accepts a
-toggle outside ON, but that does not start a session. Start applies its own
-checkbox value anew, and watcher ticks remain inactive outside ON.
+card. It is meaningful during an ON session. Start applies its checkbox value
+anew, and watcher ticks remain inactive outside ON.
 
 While ON and enabled, the agent watcher periodically captures the stitched
 monitor/webcam view and asks whether the coding agent is still working. The
 effects follow the latest watcher transition:
 
-- **Agent idle:** normal website restrictions and productivity monitoring stay
-  active.
+- **Initial or repeated idle verdict:** normal website restrictions and
+  productivity monitoring stay active. The watcher still reconciles policy, but
+  it does not queue an agent-finished message without a preceding busy state.
 - **Agent working:** the complete website blocklist opens and productivity
   monitoring pauses.
-- **Agent finished, idle, or awaiting input:** normal website restrictions
-  return, active task/goal website permissions remain open, productivity
-  monitoring resumes, and a transition message is queued.
+- **Busy-to-idle transition:** normal website restrictions return, active
+  task/goal website permissions remain open, productivity monitoring resumes,
+  and one transition message is queued.
 
 Agentic mode never grants app permission. The app killer continues to target
 configured processes unless an active task or goal scope spares them. Detection
 happens on the configured polling cadence, not instantly, and the vision
 classification can be wrong. Turning agentic mode off resets the busy flag and
 requests normal website policy immediately.
+
+## Direct-request input limitations
+
+The dashboard's HTML supplies normal constraints, but the current Flask routes
+do not enforce every one of them. Treat these as implementation limitations,
+not supported ways to obtain access:
+
+- `POST /start` validates access groups and the selected preset, but a
+  hand-crafted request can submit an empty, whitespace-trimmed topic and start
+  an ON session with that empty topic.
+- `POST /break` strictly validates access groups and rejects the legacy
+  `allowed_sites` and `allowed_apps` fields. It converts `minutes` with `int()`
+  outside its route error handler, so a nonnumeric value can return HTTP 500.
+  It does not reject an empty purpose, zero/negative/above-240 minutes, or an
+  arbitrary `kind`; extreme values can also fail date arithmetic.
+- Break allowance accounting is keyed only by the exact `social_media` kind,
+  not by selected groups. A negative social-media duration can reduce recorded
+  usage, while `away` or an unknown kind can carry selected groups without
+  spending allowance. Only `/break/stop` refunds unused positive social-media
+  minutes.
+- `POST /agentic` accepts a hand-crafted toggle outside ON. That does not start
+  a session, and watcher ticks stay inactive outside ON; the next Start request
+  replaces the value with its own checkbox setting.
+
+The loopback dashboard has no authentication or CSRF protection, so browser
+controls are neither a server-side validation boundary nor a security boundary.
+Keep it on `127.0.0.1`; see [Privacy and data](privacy-and-data.md).
 
 ## Dashboard and `/status`
 
