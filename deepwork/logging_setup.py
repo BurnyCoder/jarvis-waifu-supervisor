@@ -4,7 +4,8 @@
 # Pattern: https://docs.python.org/3/howto/logging-cookbook.html#logging-to-multiple-destinations
 
 import logging
-# datetime for the once-per-run filename stamp:
+# datetime supplies a whole-second filename stamp. Independent setup calls in
+# the same second can select the same append-mode file:
 # https://docs.python.org/3/library/datetime.html#datetime.datetime.strftime
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +30,9 @@ def setup_logging(logs_dir: Path) -> Path:
     # mkdir -p equivalent: https://docs.python.org/3/library/pathlib.html#pathlib.Path.mkdir
     logs_dir = Path(logs_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
-    # One file per run, named by start time, e.g. deepwork_20260707_221530.log
+    # Select a whole-second path, e.g. deepwork_20260707_221530.log. FileHandler
+    # opens in append mode, so same-second setup calls can intentionally share it:
+    # https://docs.python.org/3/library/logging.handlers.html#logging.FileHandler
     log_file = logs_dir / f"deepwork_{datetime.now():%Y%m%d_%H%M%S}.log"
 
     root = logging.getLogger()               # root logger catches all modules

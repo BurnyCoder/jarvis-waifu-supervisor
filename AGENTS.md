@@ -6,14 +6,17 @@ This Windows 11 productivity-enforcement app combines explicit hosts entries,
 exact-name process killing, rolling OpenAI screen/webcam evaluation, spoken
 feedback, session modes/exceptions, a loopback dashboard, and local storage.
 
-When documentation and implementation disagree, verify behavior in this order:
+For repository behavior, resolve disagreements in this order:
 
 1. Executable code and focused tests.
 2. `.env.example`, `pyproject.toml`, and `uv.lock`.
-3. `README.md`, this file, and other prose.
-4. Current authoritative upstream documentation for external behavior.
+3. The owning page linked from [the documentation index](docs/README.md).
 
-Do not preserve a claim merely because an older README or comment says it.
+For behavior owned by Python, Windows, a dependency, or an external service,
+also verify the installed version and current authoritative upstream
+documentation. Provider policy and supported API behavior can change
+independently of this repository. Do not preserve a claim merely because an
+older README, guide, or code comment says it.
 
 ## Working commands
 
@@ -34,7 +37,7 @@ uv run python main.py              # UAC + real hosts enforcement + UI
 Unit tests need no admin, API, capture, or audio; `--smoke` uses the last three.
 After Start, `--dry-hosts` still kills apps, captures, calls APIs, stores, and speaks.
 `--smoke` directly attempts one productivity monitor tick with topic
-`smoke test`: it starts no Flask or scheduler-loop threads, runs no
+`smoke test`: it starts no HTTP server or scheduler-loop threads, runs no
 enforcer/app-killer/agent-watch tick, and emits no `session_start`/good-luck
 feedback, although registered shutdown reconciles OFF through the dry-run
 blocker and persists the topic history.
@@ -52,48 +55,14 @@ arguments → elevation → config/logging → blocker selection
           → collaborator wiring → cleanup registration → smoke or server run
 ```
 
-Implementation details live under `deepwork/`:
+Implementation details live under `deepwork/`. The canonical per-module
+responsibility table is [Module ownership](docs/architecture.md#module-ownership);
+update that table when code moves instead of maintaining another copy here.
 
-| Module | Current responsibility |
-|---|---|
-| `config.py` | Frozen `.env`-derived `Config`; hardcoded site/app policy tables and hostname expansion; sparse numeric validation |
-| `access_policy.py` | Immutable 14-option website/app catalog; labels/capabilities; strict normalization; site/app projection; `projects.json` loading and task/preset union |
-| `logging_setup.py` | Timestamped UTF-8 file and terminal root logging |
-| `state.py` | Locked modes, terminal shutdown, grant/feedback coordination, versioned monitoring context, retryable policy reconciliation, breaks, allowance, identified/effectively corrected verdicts, and status |
-| `storage.py` | Quality-80 capture JPEGs, text/vision exchange JSON, retryable ordered session JSONL, and persisted allowance/topic state |
-| `runtime_status.py` | Locked JSON-safe fixed-delay loop cadence, phase, result, countdown, and error state |
-| `scheduler.py` | Enforcer (including access expiry and dirty-policy retry), context-safe productivity monitor with stale-feedback suppression, and agent-watch loops |
-| `blocking/admin.py` | Windows admin test and `runas` self-relaunch |
-| `blocking/hosts_blocker.py` | Direct marker-fenced hosts replacement/removal and best-effort DNS-cache flush; dry-run adapter |
-| `blocking/app_killer.py` | Abrupt case-insensitive exact process-name termination with psutil |
-| `monitoring/screen_capture.py` | One Pillow image per physical monitor via mss |
-| `monitoring/webcam_capture.py` | DirectShow camera-index-0 frame; an unsuccessful read returns `None`, while exceptions fail that capture tick |
-| `monitoring/stitcher.py` | Labeled vertical composite after resizing each monitor/webcam tile to 960 pixels wide |
-| `monitoring/analyzer.py` | Original-detail productivity verdict within the selected model's sizing limits: current alignment on capture 1 and task-aware rolling comparison from capture 2; low-detail single-capture agent-activity verdict |
-| `feedback/goal_access.py` | Policy-optional, event-durability-gated transition acknowledgments and independent FIFO message-generation worker |
-| `feedback/messages.py` | Context-grounded good-luck, nudge, milestone-praise, break, goal-access, verdict-correction, and agent-transition text |
-| `feedback/tts.py` | OpenAI temporary WAV or per-utterance pyttsx3 speaker behind one FIFO daemon worker |
-| `webui/app.py` | Flask factory and state-changing session, access, break, agent, latest-verdict correction, and disable routes |
-| `webui/status.py` | Composition of state and scheduler snapshots |
-| `webui/server.py` | Loopback threaded Werkzeug serving, optional `/status` readiness polling, and one-time default-browser launch |
-| `webui/templates/`, `static/` | Actions-first dashboard, latest-verdict correction form, and safe non-overlapping polling |
-
-Documentation ownership is deliberately split to keep the README useful without
-repeating the implementation contract:
-
-| Document | Maintained scope |
-|---|---|
-| `README.md` | First-run methodology, data flow, architecture overview, reproducible setup, primary usage, configuration, privacy summary, recovery, and documentation map |
-| `docs/user-guide.md` | Detailed modes, access groups and presets, goal access, breaks, agentic mode, dashboard/status, disable, and exit behavior |
-| `docs/architecture.md` | Module boundaries, collaborators, threads, locks, transition ordering, and storage flow |
-| `docs/privacy-and-data.md` | Exact uploads/artifacts, OpenAI retention context, cost drivers, and handling guidance |
-| `docs/startup.md` | Launcher, elevation, binding, readiness, and browser-open behavior |
-| `docs/troubleshooting.md` | Safe recovery and symptom-based runtime diagnostics |
-| `docs/verification.md` | Automated checks and explicitly side-effecting manual/system verification |
-| `docs/verdict-corrections.md` | Focused correction API, accounting, ordering, and regression contract |
-
-Update the narrow document that owns a detail and link to it from the README;
-do not copy the same explanation into several files.
+Documentation scopes and navigation are canonical in
+[the documentation index](docs/README.md#documentation-ownership). Update the
+narrow owning page and link to it; do not copy its detailed contract into
+`README.md`, this guide, or another page.
 
 ## Behavioral invariants
 
@@ -221,15 +190,10 @@ do not copy the same explanation into several files.
   Telegram and Steam are app-only; every other group is website-only.
 - Start, goal-access, and break forms share one repeated `allowed_groups`
   checkbox contract. Strictly normalize and allowlist all values before state,
-  events, prompts, speech, hosts, or process mutation. Reject unknown keys and
-  either legacy `allowed_sites`/`allowed_apps` field with HTTP 400. This strict
-  group validation does not extend to all route fields: Start accepts a forged
-  empty topic; Break trusts HTML for purpose, duration, and kind, calls `int()`
-  outside its error handler, does not reject zero/negative/above-240 minutes or
-  arbitrary kinds, and can corrupt accounting with negative `social_media`
-  minutes. The `/agentic` route also accepts a forged toggle outside ON mode
-  because neither the route nor `SessionState.set_agentic()` guards the
-  current mode.
+  events, prompts, speech, hosts, or process mutation, and reject either legacy
+  split access field. Other route-field gaps are documented once under
+  [Direct-request input limitations](docs/user-guide.md#direct-request-input-limitations);
+  update that section and its focused tests when the boundary changes.
 - Task and preset groups remain active during ON and BREAK, are part of the
   analyzer's permanent task context while monitoring is active, spend no social
   allowance, and spare any selected app-capable processes.
@@ -331,8 +295,8 @@ do not copy the same explanation into several files.
   calls and streamed TTS responses/audio are not stored there.
 - A verdict correction uploads no new image and is not analyzer training. Its
   neutral acknowledgement is a separate text request containing the
-  correction labels and complete session context; log and persist that prompt
-  and successful response normally. OpenAI TTS may then upload only the
+  correction labels and the bounded `SessionState.context_summary()` snapshot;
+  log and persist that prompt and successful response normally. OpenAI TTS may then upload only the
   generated utterance text, while pyttsx3 keeps synthesis/playback local.
 - Keep capture, exchange, session, and state artifacts under `results/`.
 - Screen images and a camera-index-0 frame when its read succeeds are sensitive
@@ -465,14 +429,6 @@ network, or model nondeterminism.
   `projects.json` preset containing `discord` now opens Discord websites and
   spares `discord.exe`; Telegram and Steam are valid app-only preset keys. Do
   not reintroduce separate site/app controls or silently reinterpret that key.
-- `/break` strictly validates `allowed_groups` and rejects legacy split access
-  fields, but purpose, duration, and kind still rely on the dashboard's HTML
-  constraints. Nonnumeric minutes can return 500; zero, negative, and
-  above-240 values are not rejected by validation, while extreme values can
-  still fail date arithmetic. Arbitrary kinds are accepted. Negative social
-  duration corrupts accounting, and an `away`/unknown kind can grant any
-  selected group without spending allowance. Only `/break/stop` refunds unused
-  social minutes.
 - Browser-level DoH behavior is not uniform. Windows honors its hosts file in
   the system resolver, while software with its own resolver can bypass that
   path; keep README wording conditional.

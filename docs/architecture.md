@@ -133,8 +133,6 @@ flowchart TD
         Scheduler --> AgentWatch["agent-watch tick"]
         SmokeRun --> Monitor
         Enforcer -->|"expiry · kill snapshot · policy retry"| Life
-        Monitor -->|"atomic verdict acceptance"| Life
-        AgentWatch -->|"busy/idle transition"| Life
     end
 
     subgraph CaptureAndInference["Capture and inference"]
@@ -142,14 +140,19 @@ flowchart TD
         Context --> CaptureLock["shared capture lock"]
         AgentWatch --> CaptureLock
         CaptureLock --> Capture["all monitors + optional webcam<br/>labeled 960 px-wide vertical tiles"]
-        Capture -->|"quality-80 JPEG"| Store
-        Capture -->|"monitor caller"| Analyzer["rolling productivity analyzer<br/>capture 1 alignment · capture 2+ comparison"]
+        Capture -->|"monitor caller"| CaptureGate{"same active context<br/>after capture?"}
+        CaptureGate -- no --> EarlyStale["context_changed<br/>no file or API call"]
+        CaptureGate -- yes --> MonitorSave["save quality-80 JPEG"]
+        MonitorSave --> Store
+        MonitorSave --> Analyzer["rolling productivity analyzer<br/>capture 1 alignment · capture 2+ comparison"]
         Analyzer -->|"original-detail structured request"| ProductivityResponses["OpenAI Responses API<br/>productivity vision"]
-        Capture -->|"agent-watch caller"| AgentAnalyzer["single-capture activity checker"]
+        Capture -->|"agent-watch caller"| AgentSave["save quality-80 JPEG"]
+        AgentSave --> Store
+        AgentSave --> AgentAnalyzer["single-capture activity checker"]
         AgentAnalyzer -->|"low-detail structured request"| AgentResponses["OpenAI Responses API<br/>agent activity"]
         ProductivityResponses -->|"successful exchange"| Store
         AgentResponses -->|"successful exchange"| Store
-        ProductivityResponses --> ContextGate{"same active<br/>monitoring context?"}
+        ProductivityResponses --> ContextGate{"same active context<br/>after analysis?"}
         ContextGate -- yes -->|"record verdict and source event"| Life
         ContextGate -- no --> Stale["context_changed<br/>no verdict/event/speech"]
         AgentResponses -->|"no post-inference context gate"| Life
@@ -168,11 +171,15 @@ flowchart TD
         Sessions -->|"all earlier lines durable"| Gates
         Gates --> Ready["ready FIFO"]
         Ready --> TransitionWorker
-        TransitionWorker -->|"text generation"| TextResponses["OpenAI Responses API<br/>feedback text"]
+        TransitionWorker -->|"text generation"| TextResponses["OpenAI Responses API<br/>transition feedback text"]
         TextResponses -->|"successful exchange"| Store
         TextResponses --> SpeechQueue
-        Monitor -->|"ordinary vision reason"| SpeechQueue
-        Monitor -->|"nudge or milestone text generation"| TextResponses
+        Monitor -->|"ordinary reason after source event"| VerdictSpeechGate{"same latest verdict<br/>label + revision?"}
+        Monitor -->|"nudge/milestone after source event"| MonitorText["OpenAI Responses API<br/>verdict feedback text"]
+        MonitorText -->|"successful exchange"| Store
+        MonitorText --> VerdictSpeechGate
+        VerdictSpeechGate -- yes --> SpeechQueue
+        VerdictSpeechGate -- no --> Suppressed["suppress stale utterance"]
         SpeechQueue --> TTS["OpenAI TTS or pyttsx3"]
     end
 
@@ -195,24 +202,33 @@ silently described as having productivity's stronger guarantee.
 
 ## Module ownership
 
+This is the canonical module-responsibility table. Update it when ownership
+moves; other documents should link here instead of maintaining another copy.
+
 | Module | Responsibility |
 |---|---|
-| `main.py` | Arguments, elevation, configuration/logging, backend selection, collaborator wiring, cleanup registration, and run-mode selection |
-| `deepwork/config.py` | Frozen environment-derived settings and the hardcoded domain/process policy tables |
-| `deepwork/access_policy.py` | The canonical 14-group catalog, strict normalization, labels, site/app projection, and `projects.json` preset loading |
-| `deepwork/state.py` | Locked modes, session/grant/break/agent state, monitoring revisions, effective policies, verdict accounting/corrections, feedback gates, and status snapshots |
-| `deepwork/scheduler.py` | Enforcer, productivity monitor, and agent-watch ticks plus their fixed-delay daemon loops and shared capture lock |
-| `deepwork/runtime_status.py` | Locked, JSON-safe loop phase, cadence, result, countdown, and error telemetry |
-| `deepwork/storage.py` | Capture JPEGs, LLM exchange JSON, retryable ordered session JSONL, and reloadable allowance/topic state |
-| `deepwork/blocking/` | Admin relaunch, marker-fenced hosts replacement/removal, dry-run hosts adapter, and exact-name process termination |
-| `deepwork/monitoring/` | Monitor/webcam acquisition, labeled stitching, rolling productivity analysis, and single-capture agent activity analysis |
-| `deepwork/feedback/messages.py` | Context-grounded text prompts for transition acknowledgments, nudges, and milestone praise |
-| `deepwork/feedback/goal_access.py` | The shared transition-feedback adapter and independent production worker; the historical name also covers session, break, agent, and correction messages |
-| `deepwork/feedback/tts.py` | OpenAI/pyttsx3 speaker adapters behind one process-wide FIFO speech worker |
-| `deepwork/webui/app.py` | Flask routes, input boundaries, state/event/policy sequencing, and dependency-injected application construction |
+| `main.py` | Arguments, elevation, configuration/logging, blocker selection, collaborator wiring, cleanup registration, and smoke-versus-server selection |
+| `deepwork/config.py` | Frozen `.env`-derived `Config`, hardcoded site/app policy tables, hostname expansion, and sparse numeric parsing |
+| `deepwork/access_policy.py` | Immutable 14-group catalog, labels/capabilities, strict normalization, site/app projection, `projects.json` loading, and task/preset union |
+| `deepwork/logging_setup.py` | Whole-second-named UTF-8 file logging plus real-time terminal logging |
+| `deepwork/state.py` | Locked modes, terminal shutdown, grants, breaks, allowance, agent state, monitoring revisions, retryable policy reconciliation, corrected verdict accounting, feedback gates, and status snapshots |
+| `deepwork/storage.py` | Quality-80 capture JPEGs, text/vision exchange JSON, retryable ordered session JSONL, and persisted allowance/topic state |
+| `deepwork/runtime_status.py` | Locked JSON-safe fixed-delay cadence, phase, result, countdown, and error state |
+| `deepwork/scheduler.py` | Enforcer, context-safe productivity monitor, agent watcher, fixed-delay daemon loops, and the shared capture lock |
+| `deepwork/blocking/admin.py` | Windows administrator check and `runas` self-relaunch |
+| `deepwork/blocking/hosts_blocker.py` | Marker-fenced hosts replacement/removal, best-effort DNS-cache flush, and the dry-run adapter |
+| `deepwork/blocking/app_killer.py` | Abrupt case-insensitive exact process-name termination through psutil |
+| `deepwork/monitoring/screen_capture.py` | One Pillow image per physical monitor through mss |
+| `deepwork/monitoring/webcam_capture.py` | DirectShow camera-index-0 frame; an unsuccessful read returns `None`, while an exception fails that capture tick |
+| `deepwork/monitoring/stitcher.py` | Labeled vertical composite after resizing each monitor/webcam tile to 960 pixels wide |
+| `deepwork/monitoring/analyzer.py` | Original-detail rolling productivity verdicts and low-detail single-capture agent-activity verdicts |
+| `deepwork/feedback/goal_access.py` | Policy/event-durability gates and the independent FIFO transition-message worker; the historical filename also covers non-goal transitions |
+| `deepwork/feedback/messages.py` | Context-grounded good-luck, nudge, milestone, break, goal-access, verdict-correction, and agent-transition prompts |
+| `deepwork/feedback/tts.py` | OpenAI temporary-WAV or per-utterance pyttsx3 adapters behind one FIFO daemon worker |
+| `deepwork/webui/app.py` | Flask factory plus session, access, break, agent, latest-verdict correction, and disable routes |
 | `deepwork/webui/status.py` | Composition of locked state and scheduler snapshots |
 | `deepwork/webui/server.py` | Threaded loopback binding, readiness polling, optional one-tab browser opening, and server cleanup |
-| `deepwork/webui/templates/` and `static/` | Dashboard rendering, native form actions, safe text insertion, and non-overlapping status polling |
+| `deepwork/webui/templates/` and `deepwork/webui/static/` | Dashboard rendering, shared access picker, safe text insertion, native form actions, and non-overlapping status polling |
 
 ## Scheduler cadence and tick ownership
 

@@ -42,6 +42,26 @@ or audio request. It injects collaborators or uses temporary files around
 those boundaries. A failure must be investigated rather than papered over by
 running only a narrower selection.
 
+## Documentation-only reconciliation
+
+Documentation changes still need the reproducible baseline above because
+imports, lock metadata, command names, and test counts are documentation
+claims. When source comments in state or logging are also touched, run the
+focused checks before the full suite:
+
+```powershell
+uv run pytest tests/test_state.py tests/test_logging_setup.py
+uv run pytest
+git diff --check
+git check-ignore -v .env logs/ results/
+```
+
+Review the rendered README on GitHub, including its Mermaid graph, tables,
+admonition, and attachment images. Follow every changed relative link and
+heading anchor. Compare each setup/default/runtime statement with executable
+code, focused tests, `.env.example`, `pyproject.toml`, and `uv.lock`; compare
+external service or library claims with current primary documentation.
+
 ## Focused automated matrix
 
 Run a focused test first while developing, then run `uv run pytest` before
