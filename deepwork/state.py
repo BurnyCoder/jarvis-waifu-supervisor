@@ -1121,8 +1121,11 @@ class SessionState:
             )
 
     def context_summary(self, now: datetime | None = None) -> str:
-        """One multi-line snapshot of the whole session — handed to every TTS
-        message prompt so spoken feedback can reference real specifics."""
+        """Build the bounded current-session snapshot used by message prompts.
+
+        The snapshot covers live session/access state and at most five recent
+        monitor observations; it is not a complete session-history export.
+        """
         now = now or datetime.now()
         with self._lock:
             # OFF keeps the finished session available for verdict review, so

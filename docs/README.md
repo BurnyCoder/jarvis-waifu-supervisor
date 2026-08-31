@@ -17,19 +17,15 @@ places.
 | [Verification](verification.md) | Automated checks and the full manual verification matrix |
 | [Dashboard startup](startup.md) | The narrow server-bind, readiness-probe, and optional browser-opening contract |
 | [Verdict corrections](verdict-corrections.md) | Latest-verdict correction UI, HTTP fields, accounting, event ordering, feedback, and focused checks |
-
-Repository maintainers and coding agents should also read
-[`AGENTS.md`](../AGENTS.md). It records code-sensitive invariants, module
-ownership, implementation constraints, and the GitHub workflow; it is not an
-end-user setup guide.
+| [Repository operating guide](../AGENTS.md) | Code-sensitive invariants, implementation constraints, verification expectations, and the GitHub workflow for maintainers and coding agents |
 
 ## Documentation ownership
 
 Keep clone-to-first-session instructions and the short architecture graph in
 the top-level README. Put operational instructions in the user guide, internal
-design in the architecture guide, data-handling claims in the privacy guide,
-and test procedures in the verification guide. Link to the canonical section
-instead of copying it.
+design and module ownership in the architecture guide, data-handling claims in
+the privacy guide, test procedures in the verification guide, and contributor
+rules in `AGENTS.md`. Link to the canonical section instead of copying it.
 
 When behavior changes, check executable code and focused tests first, then
 `.env.example`, `pyproject.toml`, and `uv.lock`, before updating the owning

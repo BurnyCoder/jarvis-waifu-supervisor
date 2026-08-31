@@ -26,15 +26,18 @@ The operating loop is:
    the website/app groups required for it.
 2. **Enforce policy:** reconcile the desired website policy into one fenced
    hosts-file section and repeatedly kill unallowed configured app processes.
-3. **Observe:** at a fixed delay, capture each physical monitor and optionally
-   the default webcam; resize, label, vertically stitch, and save the panels as
-   a JPEG.
-4. **Evaluate evidence:** send the current stitched capture and the retained
-   same-context rolling window to OpenAI. Capture one judges current alignment;
-   capture two onward can compare visible task-relevant change over time.
-5. **Respond and audit:** record the accepted verdict, append its session event,
-   show it in the dashboard, and queue spoken feedback. The latest verdict can
-   be corrected without erasing the original model label.
+3. **Observe:** after the scheduler's fixed wait, capture each physical monitor
+   plus one frame from camera index `0` when that read succeeds; resize, label,
+   vertically stitch, and save the new composite as a JPEG.
+4. **Evaluate evidence:** append that JPEG to the same-context rolling window,
+   then send the available one-to-`PROGRESS_WINDOW_CAPTURES` images to OpenAI
+   oldest first. Capture one judges current alignment; capture two onward can
+   compare visible task-relevant change over time.
+5. **Respond and audit:** if the monitoring context still matches, record the
+   verdict in live state, then attempt its ordered session event and one spoken
+   response. A persistence or feedback failure can leave the accepted verdict
+   visible without a durable event or utterance. The latest verdict can be
+   corrected without erasing the original model label.
 6. **Change context deliberately:** task access, temporary goal access, breaks,
    session replacement, and agentic mode update enforcement and invalidate
    incompatible rolling comparison context.
@@ -54,27 +57,46 @@ flowchart LR
 
     subgraph PC["Windows PC"]
         Main["main.py<br/>startup and wiring"]
-        UI --> State["Locked session state"]
-        State --> Scheduler["Scheduler loops"]
-        Scheduler --> Enforcer["Hosts reconciler<br/>and app killer"]
-        Scheduler --> Capture["mss monitors + OpenCV webcam<br/>Pillow stitcher"]
-        Capture --> Store["results/captures"]
-        Verdict["Accepted verdict<br/>correction + timeline"]
-        Feedback["FIFO message and speech queues"]
-        Store2["logs/ and results/<br/>LLM JSON + session JSONL + state"]
+        State["Locked session state"]
+        Scheduler["Three fixed-delay loops"]
+        Enforcer["Hosts reconciler<br/>and exact-name app killer"]
+        Productive["Productivity monitor"]
+        Agent["Agent watcher"]
+        Capture["Shared capture path<br/>mss + camera 0 + Pillow"]
+        Verdict["Accepted productivity verdict<br/>timeline + latest correction"]
+        AgentState["Busy/idle transition"]
+        Feedback["Durability-gated text feedback<br/>and FIFO speech"]
+        Local["logs/ and results/<br/>captures · LLM JSON · session JSONL · state"]
     end
 
     Main --> UI
     Main --> Scheduler
-    Capture -->|"JPEGs + topic + allowed groups"| Vision["OpenAI Responses API<br/>productivity / agent vision"]
-    Vision --> Verdict
+    UI --> State
+    State --> Enforcer
+    State --> Local
+    Scheduler --> Enforcer
+    Scheduler --> Productive
+    Scheduler --> Agent
+    Productive --> Capture
+    Agent --> Capture
+    Productive -->|"save after post-capture context check"| Local
+    Agent -->|"save current JPEG"| Local
+    Productive -->|"1–N chronological JPEGs + task context"| PVision["OpenAI Responses API<br/>original-detail productivity vision"]
+    Agent -->|"one low-detail JPEG"| AVision["OpenAI Responses API<br/>agent activity"]
+    PVision --> Verdict
+    PVision -->|"successful exchange"| Local
+    AVision --> AgentState
+    AVision -->|"successful exchange"| Local
     Verdict --> State
-    Verdict --> Store2
+    AgentState --> State
+    Verdict --> Local
+    AgentState --> Local
     Verdict --> Feedback
-    State --> Store2
-    Feedback -->|"context prompt"| Text["OpenAI Responses API<br/>optional message generation"]
+    AgentState --> Feedback
+    Feedback -->|"optional context prompt"| Text["OpenAI Responses API<br/>message generation"]
+    Text --> Local
     Text --> Feedback
-    Feedback -->|"utterance text when configured"| Speech["OpenAI Speech API"]
+    Feedback -->|"configured online voice"| Speech["OpenAI Speech API"]
     Feedback -->|"offline alternative"| SAPI["pyttsx3 / Windows SAPI"]
 ```
 
@@ -121,9 +143,11 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Replace `sk-your-key-here` in `.env` with the API key. Do not quote it,
-commit it, or paste it into logs. For offline speech playback, also change
-`TTS_ENGINE=pyttsx3`; vision and text generation still use OpenAI.
+Replace `sk-your-key-here` in `.env` with the API key, and never commit or
+paste the key into logs. python-dotenv accepts quoted and unquoted values; see
+its [file-format documentation](https://bbc2.github.io/python-dotenv/#file-format).
+For offline speech playback, also change `TTS_ENGINE=pyttsx3`; vision and text
+generation still use OpenAI.
 
 `uv sync --locked` verifies the checked-in lockfile and installs its exact
 resolution into `./.venv`. Run from the repository root because
@@ -146,9 +170,9 @@ Choose a command with its side effects in mind:
 |---|---|---|
 | `uv run python main.py --dry-hosts --open-browser` | Dashboard and all scheduler loops; opens one browser tab after readiness | No UAC or hosts writes, **but after Start it can kill apps, capture/upload images, call APIs, write artifacts, and speak** |
 | `uv run python main.py --dry-hosts` | Same dry-hosts application; open the logged URL yourself | Same non-host side effects as above |
-| `uv run python main.py --smoke` | One direct `smoke test` capture → productivity analysis → possible speech attempt | Uses real capture/OpenAI/audio and writes artifacts; no Flask, scheduler threads, hosts writes, app killing, agent watch, start event, or good-luck message |
-| `uv run python main.py` | Full dashboard and enforcement | Requests UAC, writes the hosts file, kills configured apps, captures/uploads, calls APIs, stores, and speaks |
-| `Start Deep Work.bat` | Self-elevating launcher for the full command with `--open-browser` | Same effects as the full run |
+| `uv run python main.py --smoke` | One direct `smoke test` capture → productivity analysis → possible speech attempt | Uses real capture/OpenAI/audio and writes artifacts; no HTTP server, scheduler threads, hosts writes, app killing, agent watch, start event, or good-luck message |
+| `uv run python main.py` | Full dashboard and enforcement | Requests UAC; after Start, writes the hosts file, kills configured apps, captures/uploads, calls APIs, stores, and speaks |
+| `Start Deep Work.bat` | Self-elevating launcher for the full command with `--open-browser` | Same effects as the full run; enforcement and monitoring side effects begin after Start |
 
 `--open-browser` is opt-in for terminal runs. Otherwise, open the
 `control panel listening:` URL printed in the terminal. The dashboard is
@@ -211,7 +235,7 @@ The committed `.env.example` is the copyable source of defaults:
 | `TTS_ENGINE` | `openai` | Exact `openai` selects OpenAI speech; every other value currently falls back to pyttsx3 |
 | `TTS_MODEL` | `gpt-4o-mini-tts` | OpenAI speech model |
 | `TTS_VOICE` | `coral` | OpenAI speech voice |
-| `CAPTURE_INTERVAL_S` | `300` | Fixed delay between completed productivity ticks |
+| `CAPTURE_INTERVAL_S` | `300` | Seconds waited after a completed productivity tick before the next tick begins |
 | `PROGRESS_WINDOW_CAPTURES` | `5` | Maximum retained same-context captures; minimum 2, comparison starts at capture 2 |
 | `KILL_INTERVAL_S` | `3` | Fixed delay between enforcement ticks |
 | `AGENT_CHECK_INTERVAL_S` | `60` | Fixed delay between eligible agent-watch ticks |
@@ -269,7 +293,8 @@ gitignored; never force-add them.
   `PROGRESS_WINDOW_CAPTURES` stitched JPEGs. Each can include every monitor and
   camera index `0`, plus the complete topic, permanent access groups, and any
   active goal-access goal/groups. Agent watching uploads one low-detail stitched
-  JPEG per eligible check. Text-feedback requests upload their full context.
+  JPEG per eligible check. Text-feedback requests upload a bounded current
+  session summary, including at most five recent monitor observations.
 - `TTS_ENGINE=openai` uploads each queued utterance text to the Speech API,
   streams a temporary WAV, plays it, and deletes it after successful playback;
   an exception can leave that temp file. pyttsx3 keeps synthesis/playback local.
@@ -327,18 +352,12 @@ interactive `--dry-hosts` run exercises the UI and loops without hosts writes.
 Use the bounded, side-effect-labeled checks in
 [Verification](docs/verification.md).
 
-## Documentation map
+## More documentation
 
-| Document | Use it for |
-|---|---|
-| [Using Deep Work](docs/user-guide.md) | Modes, access groups and presets, goal access, breaks, agentic mode, dashboard/status, disable, and exit behavior |
-| [Architecture](docs/architecture.md) | Modules, collaborators, threads, locks, transition ordering, and data flow |
-| [Privacy and data](docs/privacy-and-data.md) | Exact uploads, local artifacts, retention, cost drivers, and handling guidance |
-| [Startup](docs/startup.md) | Launcher, UAC relaunch, server binding, readiness, and browser-open sequence |
-| [Troubleshooting](docs/troubleshooting.md) | Safe recovery and common runtime failures |
-| [Verification](docs/verification.md) | Automated checks and opt-in manual/system checks |
-| [Verdict corrections](docs/verdict-corrections.md) | Correction API, accounting semantics, audit order, and focused test contract |
-| [Repository operating guide](AGENTS.md) | Code-sensitive invariants, ownership, implementation rules, and GitHub workflow |
+The canonical [documentation index](docs/README.md) routes detailed operating,
+architecture, privacy, startup, recovery, verification, verdict-correction, and
+maintainer information to one owning page. Follow those links when the concise
+overview here is not enough.
 
 The code is the behavioral source of truth. Documentation claims in this
 repository are intended to describe the checked-in implementation, not a
